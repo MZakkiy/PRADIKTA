@@ -4,10 +4,11 @@ from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
     QGridLayout, QGroupBox, QLabel, QPushButton, QCheckBox, 
     QProgressBar, QComboBox, QSpinBox, QTabWidget, QLineEdit,
-    QFileDialog, QMessageBox
+    QFileDialog, QMessageBox, QTableView
 )
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QAbstractTableModel, Qt
 
+from widgets import SummaryWindow
 from analysis.data_processor import import_data
 
 class UIMainWindow(QMainWindow):
@@ -42,10 +43,15 @@ class UIMainWindow(QMainWindow):
         self.create_menu_bar()
 
         self.dataframe = None
+        self.summary_win = None
 
-        self.tombol_import_data = self.findChild(QPushButton, "ImportButton")
-        if self.tombol_import_data:
-            self.tombol_import_data.clicked.connect(self.handle_import_data)
+        # self.import_button = self.findChild(QPushButton, "ImportButton")
+        # if self.import_button:
+        #     self.import_button.clicked.connect(self.handle_import_data)
+
+        self.summary_button = self.findChild(QPushButton, "SummaryButton")
+        if self.summary_button:
+            self.summary_button.clicked.connect(self.handle_summary)
 
     def create_menu_bar(self):
         menu_bar = self.menuBar()
@@ -85,6 +91,7 @@ class UIMainWindow(QMainWindow):
 
     def create_main_tabs(self):
         tab_widget = QTabWidget()
+        tab_widget.setObjectName("mainTabWidget")
         
         # Membuat setiap tab
         data_tab = self.create_data_tab()
@@ -112,11 +119,16 @@ class UIMainWindow(QMainWindow):
         # --- Kolom 1: Input Data ---
         input_group = QGroupBox("Input Data")
         input_layout = QVBoxLayout()
+
         import_data_button = QPushButton("Import Data")
         import_data_button.setObjectName("ImportButton")
-        input_layout.addWidget(import_data_button)
+        import_data_button.clicked.connect(self.handle_import_data)
+        
         summary_button = QPushButton("Summary")
         summary_button.setObjectName("SummaryButton")
+        summary_button.clicked.connect(self.handle_summary)
+        
+        input_layout.addWidget(import_data_button)
         input_layout.addWidget(summary_button)
         input_layout.addWidget(QLabel("Variable"))
         input_layout.addWidget(QComboBox())
@@ -223,5 +235,11 @@ class UIMainWindow(QMainWindow):
             # Simpan dataframe dan update UI
             self.dataframe = df
             QMessageBox.information(self, "Sukses", f"Data berhasil dimuat dengan {len(self.dataframe)} baris.")
-            # Di sini Anda akan memperbarui tabel pratinjau, jumlah NaN, dll.
-            print(self.dataframe.head())
+    
+    def handle_summary(self):
+        if self.dataframe is None:
+            QMessageBox.warning(self, "Data Tidak Ditemukan", "Tidak ada data untuk diringkas.")
+            return
+        
+        self.summary_win = SummaryWindow(self.dataframe)
+        self.summary_win.show()
