@@ -21,17 +21,13 @@ def import_data(file_path):
         
     try:
         if extension == '.csv':
-            print(f"Mendeteksi file CSV... Mengimpor '{file_path}'")
-            return pd.read_csv(file_path)
+            return pd.read_csv(file_path), None
         
         elif extension in ['.xlsx', '.xls']:
-            print(f"Mendeteksi file Excel... Mengimpor '{file_path}'")
-            # Pastikan Anda sudah menginstal openpyxl: pip install openpyxl
-            return pd.read_excel(file_path)
+            return pd.read_excel(file_path), None
             
         elif extension == '.json':
-            print(f"Mendeteksi file JSON... Mengimpor '{file_path}'")
-            return pd.read_json(file_path)
+            return pd.read_json(file_path), None
             
         else:
             # Memberikan pesan error jika format tidak didukung
@@ -39,7 +35,7 @@ def import_data(file_path):
             
     except Exception as e:
         print(f"Terjadi kesalahan saat membaca file: {e}")
-        return None
+        return None, e
 
 
 # --- Anda akan menambahkan fungsi lain di sini nanti ---
