@@ -9,13 +9,14 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import QAbstractTableModel, Qt
 
 from widgets import SummaryWindow
-from analysis.data_processor import import_data
+import pandas as pd
+from analysis.data_processor import import_data, count_na
 
 class UIMainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Aplikasi Prediksi Time Series")
-        self.setGeometry(100, 100, 1200, 800) # Ukuran awal jendela
+        self.setGeometry(100, 100, 1200, 800) 
 
         # Widget utama dan layout utama
         central_widget = QWidget()
@@ -31,7 +32,7 @@ class UIMainWindow(QMainWindow):
 
         # Panel Kanan: Tab Kontrol
         main_tabs = self.create_main_tabs()
-        top_panel_layout.addWidget(main_tabs, 1) # Angka 1 memberikan stretch factor
+        top_panel_layout.addWidget(main_tabs, 1)
 
         # --- Membuat dan Menambahkan Panel Bawah (Plot) ---
         plot_panel = self.create_plot_panel()
@@ -44,14 +45,6 @@ class UIMainWindow(QMainWindow):
 
         self.dataframe = None
         self.summary_win = None
-
-        # self.import_button = self.findChild(QPushButton, "ImportButton")
-        # if self.import_button:
-        #     self.import_button.clicked.connect(self.handle_import_data)
-
-        self.summary_button = self.findChild(QPushButton, "SummaryButton")
-        if self.summary_button:
-            self.summary_button.clicked.connect(self.handle_summary)
 
     def create_menu_bar(self):
         menu_bar = self.menuBar()
@@ -81,7 +74,7 @@ class UIMainWindow(QMainWindow):
 
         layout.addWidget(auto_update_checkbox)
         layout.addWidget(update_all_button)
-        layout.addStretch() # Menambahkan ruang fleksibel
+        layout.addStretch() 
         layout.addWidget(processing_label)
         layout.addLayout(progress_layout)
         layout.addWidget(self.status_indicator, alignment=Qt.AlignCenter)
@@ -124,18 +117,22 @@ class UIMainWindow(QMainWindow):
         import_data_button.setObjectName("ImportButton")
         import_data_button.clicked.connect(self.handle_import_data)
         
-        summary_button = QPushButton("Summary")
-        summary_button.setObjectName("SummaryButton")
-        summary_button.clicked.connect(self.handle_summary)
-        
+        self.summary_button = QPushButton("Summary")
+        self.summary_button.setObjectName("SummaryButton")
+        self.summary_button.clicked.connect(self.handle_summary)
+        self.summary_button.setEnabled(False)
+
+        self.variable_combobox = QComboBox()
+        self.variable_combobox.currentIndexChanged.connect(self.on_variable_column_selected)
+
         input_layout.addWidget(import_data_button)
-        input_layout.addWidget(summary_button)
+        input_layout.addWidget(self.summary_button)
         input_layout.addWidget(QLabel("Variable"))
-        input_layout.addWidget(QComboBox())
+        input_layout.addWidget(self.variable_combobox)
         input_layout.addWidget(QLabel("NaN Data"))
-        nan_data_line = QLineEdit("0")
-        nan_data_line.setReadOnly(True)
-        input_layout.addWidget(nan_data_line)
+        self.nan_data_line = QLineEdit("0")
+        self.nan_data_line.setReadOnly(True)
+        input_layout.addWidget(self.nan_data_line)
         input_layout.addStretch()
         input_group.setLayout(input_layout)
 
@@ -205,7 +202,7 @@ class UIMainWindow(QMainWindow):
 
         # Tombol di bawah plot
         show_button = QPushButton("Show Forecast")
-        show_button.setEnabled(False) # Awalnya nonaktif seperti di gambar
+        show_button.setEnabled(False)
         show_button.setFixedWidth(100)
         
         layout.addWidget(plot_canvas)
@@ -214,27 +211,35 @@ class UIMainWindow(QMainWindow):
         group_box.setLayout(layout)
         return group_box
 
+    def on_variable_column_selected(self, index):
+        if index > 0:
+            self.nan_data_line.setText(str(count_na(self.dataframe, self.variable_combobox.currentText()))) 
+        else:
+            self.nan_data_line.setText("0")
+
     def handle_import_data(self):
-        """
-        Ini adalah SLOT. Fungsi ini akan menjadi 'pelayan' yang
-        menangani event klik tombol.
-        """
-        # 1. Buka dialog untuk memilih file
         filter_file = "Semua File Data (*.csv *.xlsx *.xls *.json);;File CSV (*.csv);;File Excel (*.xlsx *.xls);;File JSON (*.json);;Semua File (*)"
         file_path, _ = QFileDialog.getOpenFileName(self, "Pilih File Data", "", filter_file)
 
-        # 2. Panggil fungsi backend dari 'dapur' untuk memproses file
         df, error_message = import_data(file_path)
 
-        # 3. Tampilkan hasilnya ke pengguna
         if error_message:
-            # Tampilkan pesan error jika ada masalah
             QMessageBox.critical(self, "Error", error_message)
             self.dataframe = None
+            self.variable_combobox.clear()
+            # self.time_column_combobox.clear() 
+            self.summary_button.setEnabled(False)
         else:
-            # Simpan dataframe dan update UI
             self.dataframe = df
             QMessageBox.information(self, "Sukses", f"Data berhasil dimuat dengan {len(self.dataframe)} baris.")
+
+            column_list = self.dataframe.columns.tolist()
+            
+            self.variable_combobox.clear()
+            self.variable_combobox.addItem("-- Choose Variable Column --")
+            self.variable_combobox.addItems(column_list)
+
+            self.summary_button.setEnabled(True)
     
     def handle_summary(self):
         if self.dataframe is None:

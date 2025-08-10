@@ -4,10 +4,6 @@ import pandas as pd
 import os
 
 def import_data(file_path):
-    """
-    Mencoba memuat data dari file CSV yang diberikan.
-    Mengembalikan DataFrame jika berhasil, atau None jika gagal.
-    """
     if not file_path:
         return None, "Tidak ada file yang dipilih."
 
@@ -24,7 +20,9 @@ def import_data(file_path):
             return pd.read_csv(file_path), None
         
         elif extension in ['.xlsx', '.xls']:
-            return pd.read_excel(file_path), None
+            df = pd.read_excel(file_path)
+            df = set_datetime_index(df)
+            return df, None
             
         elif extension == '.json':
             return pd.read_json(file_path), None
@@ -33,12 +31,22 @@ def import_data(file_path):
             # Memberikan pesan error jika format tidak didukung
             raise ValueError(f"Format file '{extension}' tidak didukung. Gunakan .csv, .xlsx, atau .json.")
             
-    except Exception as e:
+    except ValueError as e:
         print(f"Terjadi kesalahan saat membaca file: {e}")
         return None, e
+    
+def count_na(dataframe, column_name):
+    return dataframe[column_name].isna().sum()
 
-
-# --- Anda akan menambahkan fungsi lain di sini nanti ---
+def set_datetime_index(dataframe):
+    for column in dataframe.columns:
+        try:
+            dataframe[column] = pd.to_datetime(dataframe[column], dayfirst=True)
+            dataframe.set_index(column, inplace=True)
+            return dataframe
+        except Exception:
+            continue 
+    raise ValueError(f"Tidak ada kolom waktu")
 
 def data_imputation(dataframe, metode):
     # ... kode untuk imputasi ...
