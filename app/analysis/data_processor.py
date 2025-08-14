@@ -82,6 +82,12 @@ def MAE(actual, predicted):
 def MSE(actual, predicted):
     return mean_squared_error(actual, predicted)
 
-def data_separation(dataframe, rasio_train):
-    # ... kode untuk memisahkan data ...
-    pass
+def data_separation(dataframe, train_ratio, valid_ratio):
+    n_data = len(dataframe)
+    train_split_index = int(n_data * train_ratio)
+    validation_split_index = int(n_data * (train_ratio + valid_ratio))
+    
+    train_data = dataframe[:train_split_index]
+    validation_data = dataframe[train_split_index:validation_split_index]
+    test_data = dataframe[validation_split_index:]
+    return train_data, validation_data, test_data

@@ -8,9 +8,8 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt
 
-import pandas as pd
 from widgets import SummaryWindow, MplCanvas
-from analysis.data_processor import import_data, count_na, data_imputation, remove_random_data, MAE, MSE
+from analysis.data_processor import import_data, count_na, data_imputation, remove_random_data, MAE, MSE, data_separation
 
 class UIMainWindow(QMainWindow):
     def __init__(self):
@@ -188,19 +187,33 @@ class UIMainWindow(QMainWindow):
         preprocess_layout = QVBoxLayout()
         preprocess_layout.addWidget(QCheckBox("Standardize"))
         preprocess_group.setLayout(preprocess_layout)
+
+        self.train_percentage = QSpinBox()
+        self.valid_percentage = QSpinBox()
+        self.test_percentage = QSpinBox()
+
+        self.train_total = QLineEdit("0")
+        self.valid_total = QLineEdit("0")
+        self.test_total = QLineEdit("0")
+        self.train_total.setReadOnly(True)
+        self.valid_total.setReadOnly(True)
+        self.test_total.setReadOnly(True)
         
+        self.show_separation = QPushButton("Show")
+        self.show_separation.clicked.connect(self.handle_show_separation)
+
         separation_group = QGroupBox("Data Separation")
         separation_layout = QGridLayout()
         separation_layout.addWidget(QLabel("Train (%)"), 0, 0)
-        separation_layout.addWidget(QSpinBox(), 0, 1)
-        separation_layout.addWidget(QLineEdit("0"), 0, 2) # (#)
+        separation_layout.addWidget(self.train_percentage, 0, 1)
+        separation_layout.addWidget(self.train_total, 0, 2) # (#)
         separation_layout.addWidget(QLabel("Validation (%)"), 1, 0)
-        separation_layout.addWidget(QSpinBox(), 1, 1)
-        separation_layout.addWidget(QLineEdit("0"), 1, 2) # (#)
+        separation_layout.addWidget(self.valid_percentage, 1, 1)
+        separation_layout.addWidget(self.valid_total, 1, 2) # (#)
         separation_layout.addWidget(QLabel("Test (%)"), 2, 0)
-        separation_layout.addWidget(QSpinBox(), 2, 1)
-        separation_layout.addWidget(QLineEdit("0"), 2, 2) # (#)
-        # separation_layout.addWidget(QPushButton("Show"), 3, 0, 1, 3)
+        separation_layout.addWidget(self.test_percentage, 2, 1)
+        separation_layout.addWidget(self.test_total, 2, 2) # (#)
+        separation_layout.addWidget(self.show_separation, 3, 0, 1, 3)
         separation_group.setLayout(separation_layout)
         
         right_column_layout.addWidget(preprocess_group)
@@ -373,3 +386,29 @@ class UIMainWindow(QMainWindow):
         except Exception as e:
             QMessageBox.critical(self, "Error Plotting", f"Gagal membuat plot: {e}")
             print(f"Error plotting: {e}")
+    
+    def handle_show_separation(self):
+        if self.train_percentage.value() + self.valid_percentage.value() + self.test_percentage.value() != 100:
+            QMessageBox.warning(self, "Error", "Jumlah rasio dari train, validation, dan test harus 100%!")
+            return
+
+        self.train_data, self.validation_data, self.test_data = data_separation(self.imputed_dataframe, self.train_percentage.value() / 100, self.valid_percentage.value() / 100)
+
+        self.main_plot_canvas.axes.cla()
+
+        variable_col = self.variable_combobox.currentText()
+
+        self.train_plot, = self.main_plot_canvas.axes.plot(self.train_data.index, self.train_data[variable_col], label="Train Data")
+        self.validation_plot, = self.main_plot_canvas.axes.plot(self.validation_data.index, self.validation_data[variable_col], label="Validation Data")
+        self.test_plot, = self.main_plot_canvas.axes.plot(self.test_data.index, self.test_data[variable_col], label="Test Data")
+
+        self.main_plot_canvas.axes.set_xlabel(self.train_data.index.name)
+        self.main_plot_canvas.axes.set_ylabel(variable_col)
+        self.main_plot_canvas.axes.legend()
+        self.main_plot_canvas.axes.grid(True, linestyle='--', alpha=0.6)
+        self.main_plot_canvas.figure.autofmt_xdate()
+        self.main_plot_canvas.figure.tight_layout()
+        
+        # Segarkan kanvas untuk menampilkan plot baru
+        self.main_plot_canvas.draw()
+        
