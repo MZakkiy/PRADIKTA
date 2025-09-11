@@ -1,11 +1,13 @@
 # app/analysis/data_processor.py
 
 from sklearn.metrics import mean_squared_error, mean_absolute_error
+from sklearn.preprocessing import StandardScaler
+
 import pandas as pd
 import numpy as np
 import os
 
-method_map = {'Forward' : 'ffill',
+METHOD_MAP = {'Forward' : 'ffill',
               'Bacward' : 'bfill',
               'Linear' : 'linear',
               'Spline' : 'spline',
@@ -62,18 +64,19 @@ def set_datetime_index(dataframe):
             continue 
     raise ValueError(f"Tidak ada kolom waktu")
 
-def data_imputation(dataframe, column_name, method):
+def data_imputation(dataframe, method):
     if method == 'Forward':
-        return dataframe[column_name].ffill()
+        return dataframe.ffill()
     elif method == 'Backward':
-        return dataframe[column_name].bfill()
+        return dataframe.bfill()
     else:
-        return dataframe[column_name].interpolate(method=method_map[method])
+        return dataframe.interpolate(method=METHOD_MAP[method])
     
-def remove_random_data(dataframe, column_name, n_sample):
+def remove_random_data(dataframe, sample_ratio):
     np.random.seed(74)
-    random_valid_indices = dataframe[column_name][dataframe[column_name].notna()].sample(n=n_sample).index
-    dataframe.loc[random_valid_indices, column_name] = np.nan
+    n_data = len(dataframe)
+    random_valid_indices = dataframe[dataframe.notna()].sample(n=int(sample_ratio * n_data)).index
+    dataframe[random_valid_indices] = np.nan
     return dataframe, random_valid_indices
 
 def MAE(actual, predicted):
@@ -91,3 +94,13 @@ def data_separation(dataframe, train_ratio, valid_ratio):
     validation_data = dataframe[train_split_index:validation_split_index]
     test_data = dataframe[validation_split_index:]
     return train_data, validation_data, test_data
+
+def feature_scaling(train_data, validation_data, test_data):
+    scaler = StandardScaler()
+    scaler.fit(train_data)
+
+    train_data_scaled = scaler.transform(train_data)
+    validation_data_scaled = scaler.transform(validation_data)
+    test_data_scaled = scaler.transform(test_data)
+
+    return train_data_scaled, validation_data_scaled, test_data_scaled 

@@ -7,11 +7,8 @@ import matplotlib
 matplotlib.use('QtAgg') # Set backend Matplotlib agar kompatibel
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
-import numpy as np # Kita akan butuh numpy
+import numpy as np 
 
-# =======================================================
-# KELAS KANVAS MATPLOTLIB (BARU)
-# =======================================================
 class MplCanvas(FigureCanvas):
     """Widget kanvas Matplotlib yang bisa diintegrasikan ke PySide6."""
     def __init__(self, parent=None, width=5, height=4, dpi=100):
@@ -19,9 +16,6 @@ class MplCanvas(FigureCanvas):
         self.axes = fig.add_subplot(111)
         super(MplCanvas, self).__init__(fig)
 
-# =======================================================
-# KELAS MODEL UNTUK MENJEMBATANI PANDAS DAN QTABLEVIEW
-# =======================================================
 class PandasModel(QAbstractTableModel):
     """
     Kelas Model untuk mengubah Pandas DataFrame menjadi sumber data
@@ -49,10 +43,6 @@ class PandasModel(QAbstractTableModel):
             if orientation == Qt.Vertical:
                 return str(self._data.index[section])
         return None
-
-# =======================================================
-# KELAS JENDELA KUSTOM UNTUK MENAMPILKAN RINGKASAN
-# =======================================================
 
 class SummaryWindow(QWidget):
     """
@@ -85,7 +75,7 @@ class SummaryWindow(QWidget):
         
         # 4. Panggil fungsi untuk mengisi konten
         self.plot_boxplot()
-        self.tampilkan_ringkasan_tabel()
+        self.show_summary_table()
         
     def plot_boxplot(self):
         """Membuat dan menampilkan box plot untuk kolom numerik."""
@@ -114,7 +104,7 @@ class SummaryWindow(QWidget):
             self.plot_canvas.axes.text(0.5, 0.5, f'Error: {e}', 
                                        horizontalalignment='center', verticalalignment='center')
 
-    def tampilkan_ringkasan_tabel(self):
+    def show_summary_table(self):
         """Menampilkan DataFrame ringkasan di QTableView."""
         # ... (fungsi ini tidak perlu diubah) ...
         try:
