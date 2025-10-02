@@ -8,26 +8,28 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt
 
-from widgets import SummaryWindow, MplCanvas
-
-import warnings
-
-warnings.filterwarnings('ignore')
+from widgets import SummaryWindow, MplCanvas, LossFunctionWindow
 
 import re
+
+import pandas as pd
+import numpy as np
 
 from analysis.data_processor import (
     import_data, count_na, data_imputation, remove_random_data, 
     MAE, MSE, data_separation, feature_scaling
 )
+
 from analysis.lstm import (
-    create_sliding_window, build_lstm_model
+    create_sliding_window, build_lstm_model, forecast_lstm
 )
+
+from analysis.fire_predict import fire_predict
 
 class UIMainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Aplikasi Prediksi Time Series")
+        self.setWindowTitle("Time Series Prediction Application")
         self.setGeometry(100, 100, 1200, 800) 
 
         # Widget utama dan layout utama
@@ -100,17 +102,20 @@ class UIMainWindow(QMainWindow):
         
         # Membuat setiap tab
         data_tab = self.create_data_tab()
-        arima_tab = self.create_arima_tab()
+        # arima_tab = self.create_arima_tab()
         lstm_tab = self.create_lstm_tab()
+        fire_index_tab = self.create_fire_index_tab()
         
         # Menambahkan tab
-        tab_widget.addTab(data_tab, "Data")
-        tab_widget.addTab(arima_tab, "ARIMA SARIMA")
-        tab_widget.addTab(lstm_tab, "LSTM")
+        tab_widget.addTab(data_tab, "Data Preparation")
+        # tab_widget.addTab(arima_tab, "ARIMA SARIMA")
+        tab_widget.addTab(lstm_tab, "Build ML Model")
+        tab_widget.addTab(fire_index_tab, "Fire Index")
+
         
         # Contoh isi untuk tab placeholder
-        arima_tab.setLayout(QVBoxLayout())
-        arima_tab.layout()
+        # arima_tab.setLayout(QVBoxLayout())
+        # arima_tab.layout()
         
         lstm_tab.setLayout(QVBoxLayout())
         lstm_tab.layout()
@@ -163,7 +168,7 @@ class UIMainWindow(QMainWindow):
         self.test_total.setReadOnly(True)
         
         self.show_separation = QPushButton("Show")
-        self.show_separation.clicked.connect(self.handle_show_separation)
+        self.show_separation.clicked.connect(self.handle_separation)
         self.show_separation.setEnabled(False)
 
         separation_group = QGroupBox("Data Separation")
@@ -231,7 +236,10 @@ class UIMainWindow(QMainWindow):
         # --- Kolom 4: Feature Scaling ---
         preprocess_group = QGroupBox("Feature Scaling")
         preprocess_layout = QVBoxLayout()
-        preprocess_layout.addWidget(QCheckBox("Standardize"))
+        self.scale_button = QCheckBox("Scale Data")
+        self.scale_button.stateChanged.connect(self.on_scaler_button_state_changed)
+
+        preprocess_layout.addWidget(self.scale_button)
         preprocess_group.setLayout(preprocess_layout)
 
         # Menambahkan semua grup ke layout utama tab data
@@ -412,8 +420,8 @@ class UIMainWindow(QMainWindow):
         # Menambahkan setiap kolom ke layout utama dengan stretch factor
         main_layout.addWidget(build_col, 2)
         main_layout.addWidget(train_col, 2)
-        main_layout.addWidget(eval_col, 1)
-        main_layout.addWidget(forecast_col, 1) # Kolom prediksi lebih lebar
+        main_layout.addWidget(eval_col, 2)
+        # main_layout.addWidget(forecast_col, 1) # Kolom prediksi lebih lebar
 
         return lstm_tab_widget
 
@@ -423,24 +431,30 @@ class UIMainWindow(QMainWindow):
         layout = QGridLayout()
         
         self.lstm_window_size_spinbox = QSpinBox()
-        self.lstm_window_size_spinbox.setRange(1, 5)
+        self.lstm_window_size_spinbox.setMinimum(1)
+        # self.lstm_window_size_spinbox.setRange(1, 5)
         self.lstm_window_size_spinbox.setValue(1)
         
         self.lstm_layers_spinbox = QSpinBox()
-        self.lstm_layers_spinbox.setRange(1, 5)
+        self.lstm_layers_spinbox.setMinimum(1)
+        self.lstm_layers_spinbox.setMaximum(1000)
         self.lstm_layers_spinbox.setValue(1)
         
         self.lstm_units_spinbox = QSpinBox()
         self.lstm_units_spinbox.setMinimum(1)
-        self.lstm_units_spinbox.setValue(50)
+        self.lstm_units_spinbox.setValue(32)
 
         self.lstm_dropout_spinbox = QDoubleSpinBox()
         self.lstm_dropout_spinbox.setRange(0.0, 0.9)
         self.lstm_dropout_spinbox.setSingleStep(0.1)
         self.lstm_dropout_spinbox.setValue(0.2)
 
-        self.build_model_button = QPushButton("Build Model")
-        self.build_model_button.clicked.connect(self.handle_build_model_lstm)
+        self.lstm_type_combo = QComboBox()
+        self.lstm_type_combo.addItems(["LSTM", "GRU", "Bi-LSTM"])
+
+        self.lstm_build_model_button = QPushButton("Build Model")
+        self.lstm_build_model_button.clicked.connect(self.handle_build_model_lstm)
+        self.lstm_build_model_button.setEnabled(False)
         
         layout.addWidget(QLabel("Window Size"), 0, 0)
         layout.addWidget(self.lstm_window_size_spinbox, 0, 1) 
@@ -450,7 +464,9 @@ class UIMainWindow(QMainWindow):
         layout.addWidget(self.lstm_units_spinbox, 0, 3)
         layout.addWidget(QLabel("Dropout Rate"), 1, 2)
         layout.addWidget(self.lstm_dropout_spinbox, 1, 3)
-        layout.addWidget(self.build_model_button, 2, 1, 1, 2)
+        layout.addWidget(QLabel("Model Type"), 2, 0)
+        layout.addWidget(self.lstm_type_combo, 2, 1)
+        layout.addWidget(self.lstm_build_model_button, 2, 2, 1, 2)
         
         group_box.setLayout(layout)
         return group_box
@@ -476,8 +492,9 @@ class UIMainWindow(QMainWindow):
         
         self.train_progress_bar = QProgressBar()
 
-        self.train_model_button = QPushButton("Train Model")
-        self.train_model_button.clicked.connect(self.handle_train_model_lstm)
+        self.lstm_train_model_button = QPushButton("Train Model")
+        self.lstm_train_model_button.clicked.connect(self.handle_train_model_lstm)
+        self.lstm_train_model_button.setEnabled(False)
 
         layout.addWidget(QLabel("Epochs"), 0, 0)
         layout.addWidget(self.lstm_epochs_spinbox, 0, 1)
@@ -487,7 +504,7 @@ class UIMainWindow(QMainWindow):
         layout.addWidget(self.lstm_optimizer_combo, 2, 1)
         layout.addWidget(QLabel("Loss Function"), 0, 2)
         layout.addWidget(self.lstm_loss_combo, 0, 3)
-        layout.addWidget(self.train_model_button, 1, 2, 1, 2)
+        layout.addWidget(self.lstm_train_model_button, 1, 2, 1, 2)
         layout.addWidget(QLabel("Progress"), 2, 2)
         layout.addWidget(self.train_progress_bar, 2, 3)
 
@@ -497,7 +514,7 @@ class UIMainWindow(QMainWindow):
     def create_lstm_eval_column(self):
         """Membuat kolom ketiga: Metrik Evaluasi."""
         group_box = QGroupBox("Model Evaluation")
-        layout = QFormLayout()
+        layout = QGridLayout()
         
         self.lstm_mse_line = QLineEdit("N/A")
         self.lstm_mse_line.setReadOnly(True)
@@ -507,10 +524,16 @@ class UIMainWindow(QMainWindow):
         
         self.lstm_mae_line = QLineEdit("N/A")
         self.lstm_mae_line.setReadOnly(True)
+
+        self.lstm_show_loss_plot_button = QPushButton("Loss Plot")
+        self.lstm_show_loss_plot_button.clicked.connect(self.handle_loss_function)
+        self.lstm_show_loss_plot_button.setEnabled(False)
         
-        layout.addRow("MSE", self.lstm_mse_line)
-        # layout.addRow("RMSE (Root MSE):", self.lstm_rmse_line)
-        layout.addRow("MAE", self.lstm_mae_line)
+        layout.addWidget(QLabel("MSE"), 0, 0)
+        layout.addWidget(self.lstm_mse_line, 0, 1)
+        layout.addWidget(QLabel("MAE"), 1, 0)
+        layout.addWidget(self.lstm_mae_line, 1, 1)
+        layout.addWidget(self.lstm_show_loss_plot_button, 2, 0, 1, 2)
         
         group_box.setLayout(layout)
         return group_box
@@ -527,9 +550,13 @@ class UIMainWindow(QMainWindow):
         self.lstm_forecast_steps_spinbox = QSpinBox()
         self.lstm_forecast_steps_spinbox.setMinimum(1)
         self.lstm_forecast_steps_spinbox.setValue(12)
+
+        self.lstm_forecast_button = QPushButton("Forecast")
+        self.lstm_forecast_button.setEnabled(False)
+        self.lstm_forecast_button.clicked.connect(self.handle_forecast_lstm) 
         
         control_layout.addRow("Forecast Steps:", self.lstm_forecast_steps_spinbox)
-        control_layout.addRow(QPushButton("Forecast"))
+        control_layout.addRow(self.lstm_forecast_button)
         
         # Plot di bagian bawah
         # self.lstm_forecast_canvas = MplCanvas(self)
@@ -540,6 +567,45 @@ class UIMainWindow(QMainWindow):
         
         group_box.setLayout(layout)
         return group_box
+    
+    def create_fire_index_tab(self):
+        fire_index_tab_widget = QWidget()
+        main_layout = QHBoxLayout(fire_index_tab_widget)
+        # main_layout.setContentsMargins(15, 15, 15, 15)
+        # main_layout.setSpacing(15)
+
+        # Membuat setiap kolom menggunakan fungsi pembantu
+        fire_index_col = self.create_fire_index_column()
+
+        # Menambahkan setiap kolom ke layout utama dengan stretch factor
+        main_layout.addWidget(fire_index_col, 1, Qt.AlignmentFlag.AlignLeft)
+
+        return fire_index_tab_widget
+
+    def create_fire_index_column(self):
+        group_box = QGroupBox("Calculate Fire Index")
+        layout = QGridLayout()
+
+        self.forecast_steps_spinbox = QSpinBox()
+        self.forecast_steps_spinbox.setMinimum(1)
+        self.forecast_steps_spinbox.setValue(12)
+
+        self.optim_method_combo = QComboBox()
+        self.optim_method_combo.addItems(["Nelder-Mead"])
+
+        self.forecast_button = QPushButton("Forecast")
+        self.forecast_button.setEnabled(False)
+        self.forecast_button.clicked.connect(self.handle_forecast_lstm) 
+
+        layout.addWidget(QLabel("Forecast Steps:"), 0, 0)
+        layout.addWidget(self.forecast_steps_spinbox, 0, 1)
+        layout.addWidget(QLabel("optimization method"), 1, 0)
+        layout.addWidget(self.optim_method_combo, 1, 1)
+        layout.addWidget(self.forecast_button, 2, 0, 1, 2)
+
+        group_box.setLayout(layout)
+
+        return group_box
 
     def create_plot_panel(self):
         group_box = QGroupBox("Main Plot")
@@ -549,23 +615,36 @@ class UIMainWindow(QMainWindow):
         self.main_plot_canvas = MplCanvas(self, width=100, height=80, dpi=50)
 
         # Tombol di bawah plot
-        show_button = QPushButton("Show Forecast")
-        show_button.setEnabled(False)
-        show_button.setFixedWidth(100)
+        # show_button = QPushButton("Show Forecast")
+        # show_button.setEnabled(False)
+        # show_button.setFixedWidth(100)
         
         layout.addWidget(self.main_plot_canvas)
-        layout.addWidget(show_button, alignment=Qt.AlignCenter)
+        # layout.addWidget(show_button, alignment=Qt.AlignCenter)
         
         group_box.setLayout(layout)
         return group_box
 
     def on_variable_column_selected(self, index):
         if index >= 0:
-            variable_col= self.variable_combobox.currentText()
-            self.nan_data_line.setText(str(count_na(self.dataframe, variable_col))) 
-            self.na_marker = self.dataframe[variable_col].isna()
-            self.imputation_method.setCurrentIndex(-1)
-            self.handle_show_plot()
+            if self.imputation_method.isEnabled():
+                if self.forecast_button.isEnabled():
+                    self.handle_show_plot_predict()
+                elif self.imputation_method.currentIndex() > -1:
+                    self.handle_show_plot_imputed()
+                else:
+                    self.handle_show_plot_separation()
+            else:
+                variable_col= self.variable_combobox.currentText()
+                n_nan = count_na(self.dataframe, variable_col)
+
+                if n_nan == 0:
+                    self.lstm_build_model_button.setEnabled(True)
+
+                self.nan_data_line.setText(str(count_na(self.dataframe, variable_col))) 
+                self.na_marker = self.dataframe[variable_col].isna()
+                self.imputation_method.setCurrentIndex(-1)
+                self.handle_show_plot()
         else:
             self.nan_data_line.setText("0")
             self.main_plot_canvas.axes.cla()
@@ -574,23 +653,29 @@ class UIMainWindow(QMainWindow):
         if index >= 0:
             self.random_check.setEnabled(True)
             self.sample_percentage_random_check.setValue(0)
-            # variable_col = self.variable_combobox.currentText()
+            variable_col = self.variable_combobox.currentText()
             
-            if self.na_marker_train.sum() != 0:
-                self.train_plot.remove()
-                self.imputed_train_data = data_imputation(self.imputed_train_data, self.imputation_method.currentText())
-                self.train_plot, = self.main_plot_canvas.axes.plot(self.imputed_train_data.index, self.imputed_train_data, label='Actual Train', c='blue')
+            for column in self.imputed_train_data:
+                if self.na_marker_train[column].sum() != 0:
+                    self.imputed_train_data[column] = data_imputation(self.train_data[column].copy(), self.imputation_method.currentText())
 
-            if self.na_marker_validation.sum() != 0:            
-                self.validation_plot.remove()
-                self.imputed_validation_data = data_imputation(self.imputed_validation_data, self.imputation_method.currentText())
-                self.validation_plot, = self.main_plot_canvas.axes.plot(self.imputed_validation_data.index, self.imputed_validation_data, label='Actual Val', c='orange')
+                if self.na_marker_validation[column].sum() != 0:            
+                    self.imputed_validation_data[column] = data_imputation(self.validation_data[column].copy(), self.imputation_method.currentText())
+                
+                if self.na_marker_test[column].sum() != 0:
+                    self.imputed_test_data[column] = data_imputation(self.test_data[column].copy(), self.imputation_method.currentText())
             
-            if self.na_marker_test.sum() != 0:
-                self.test_plot.remove()
-                self.imputed_test_data = data_imputation(self.imputed_test_data, self.imputation_method.currentText())
-                self.test_plot, = self.main_plot_canvas.axes.plot(self.imputed_test_data.index, self.imputed_test_data, label='Actual Test', c='yellow')
+            self.train_plot.remove()
+            self.validation_plot.remove()
+            self.test_plot.remove()
 
+            self.main_plot_canvas.axes.set_prop_cycle(None)
+
+            self.train_plot, = self.main_plot_canvas.axes.plot(self.imputed_train_data[variable_col].copy().index, self.imputed_train_data[variable_col].copy(), label='Actual Train')
+            self.validation_plot, = self.main_plot_canvas.axes.plot(self.imputed_validation_data[variable_col].copy().index, self.imputed_validation_data[variable_col].copy(), label='Actual Val')
+            self.test_plot, = self.main_plot_canvas.axes.plot(self.imputed_test_data[variable_col].copy().index, self.imputed_test_data[variable_col].copy(), label='Actual Test')
+
+            self.lstm_build_model_button.setEnabled(True)
             self.nan_data_line.setText("0")
 
             self.main_plot_canvas.axes.legend()
@@ -643,20 +728,41 @@ class UIMainWindow(QMainWindow):
     # Belum jadi
     def on_scaler_button_state_changed(self, state):
         if state == 2:
-            self.train_data_scaled, self.validation_data_scaled, self.test_data_scaled = feature_scaling(self.imputed_train_data.copy(), self.imputed_validation_data.copy(), self.imputed_test_data.copy())
+            self.train_data_scaled = {}
+            self.validation_data_scaled  = {}
+            self.test_data_scaled = {}
 
-            self.train_plot.remove()
-            self.validation_plot.remove()
-            self.test_plot.remove()
+            self.scaler = {}
 
-            self.train_plot, = self.main_plot_canvas.axes.plot(self.train_data_scaled.index, self.train_data_scaled, label='Actual Train', c='blue')
+            for column in self.imputed_train_data:
+                self.train_data_scaled[column], self.validation_data_scaled[column], self.test_data_scaled[column], self.scaler[column] = feature_scaling(self.imputed_train_data[column].copy(), self.imputed_validation_data[column].copy(), self.imputed_test_data[column].copy())
+
+            # self.main_plot_canvas.axes.cla()
+
+            # self.main_plot_canvas.axes.set_prop_cycle(None)
+
+            # variable_col = self.variable_combobox.currentText()
+            
+            # self.train_plot, = self.main_plot_canvas.axes.plot(self.train_data[variable_col].copy().index, self.train_data_scaled[variable_col].copy(), label='Actual Train')
+            # self.validation_plot, = self.main_plot_canvas.axes.plot(self.validation_data[variable_col].copy().index, self.validation_data_scaled[variable_col].copy(), label='Actual Val')
+            # self.test_plot, = self.main_plot_canvas.axes.plot(self.test_data[variable_col].copy().index, self.test_data_scaled[variable_col].copy(), label='Actual Test')
+
+            # self.predict_plot, = self.main_plot_canvas.axes.plot([], [], label="Predict Test")
+
+            # self.main_plot_canvas.axes.set_ylabel(variable_col)
+            # self.main_plot_canvas.axes.legend()
+            # self.main_plot_canvas.axes.grid(True, linestyle='--', alpha=0.6)
+            # self.main_plot_canvas.figure.autofmt_xdate()
+            # self.main_plot_canvas.figure.tight_layout()
+
+            # self.main_plot_canvas.draw()
         else:
             self.sample_percentage_random_check.setValue(0)
             self.sample_percentage_random_check.setEnabled(False)
 
     def handle_import_data(self):
-        filter_file = "Semua File Data (*.csv *.xlsx *.xls *.json);;File CSV (*.csv);;File Excel (*.xlsx *.xls);;File JSON (*.json);;Semua File (*)"
-        file_path, _ = QFileDialog.getOpenFileName(self, "Pilih File Data", "", filter_file)
+        filter_file = "All Data Files (*.csv *.xlsx *.xls *.json);;CSV Files (*.csv);;Excel Files (*.xlsx *.xls);;JSON Files (*.json);;All Files (*)"
+        file_path, _ = QFileDialog.getOpenFileName(self, "Select Data File", "", filter_file)
 
         df, error_message = import_data(file_path)
 
@@ -667,9 +773,11 @@ class UIMainWindow(QMainWindow):
             self.summary_button.setEnabled(False)
             self.show_separation.setEnabled(False)
             self.imputation_method.setEnabled(False)
+            self.main_plot_canvas.axes.cla()
+
         else:
             self.dataframe = df
-            QMessageBox.information(self, "Sukses", f"Data berhasil dimuat dengan {len(self.dataframe)} baris.")
+            QMessageBox.information(self, "Success", f"Data successfully loaded with {len(self.dataframe)} rows.")
 
             column_list = self.dataframe.columns.tolist()
             
@@ -681,11 +789,10 @@ class UIMainWindow(QMainWindow):
 
             self.summary_button.setEnabled(True)
             self.show_separation.setEnabled(True)
-            self.imputation_method.setEnabled(True)
     
     def handle_summary(self):
         if self.dataframe is None:
-            QMessageBox.warning(self, "Data Tidak Ditemukan", "Tidak ada data untuk diringkas.")
+            QMessageBox.warning(self, "Data Not Found", "There is no data to summarize.")
             return
         
         self.summary_win = SummaryWindow(self.dataframe)
@@ -693,7 +800,7 @@ class UIMainWindow(QMainWindow):
 
     def handle_show_plot(self):
         if self.dataframe is None:
-            QMessageBox.warning(self, "Error", "Data belum dimuat!")
+            QMessageBox.warning(self, "Error", "Data has not been loaded!")
             return
 
         variable_col = self.variable_combobox.currentText()
@@ -704,9 +811,11 @@ class UIMainWindow(QMainWindow):
 
             # Bersihkan plot sebelumnya
             self.main_plot_canvas.axes.cla()
+
+            self.main_plot_canvas.axes.set_prop_cycle(None)
             
             # Gambar plot deret waktu
-            self.main_plot, = self.main_plot_canvas.axes.plot(plot_df.index, plot_df[variable_col], label='Actual Data', c='blue')
+            self.main_plot, = self.main_plot_canvas.axes.plot(plot_df.index, plot_df[variable_col], label='Actual Data')
             # self.imputation_plot = self.main_plot_canvas.axes.scatter([], [])
             
             # Atur properti plot agar lebih informatif
@@ -721,39 +830,51 @@ class UIMainWindow(QMainWindow):
             self.main_plot_canvas.draw()
 
         except Exception as e:
-            QMessageBox.critical(self, "Error Plotting", f"Gagal membuat plot: {e}")
+            QMessageBox.critical(self, "Error Plotting", f"Failed to create plot: {e}")
             print(f"Error plotting: {e}")
     
-    def handle_show_separation(self):
+    def handle_separation(self):
         if self.train_percentage.value() + self.valid_percentage.value() + self.test_percentage.value() != 100:
-            QMessageBox.warning(self, "Error", "Jumlah rasio dari train, validation, dan test harus 100%!")
+            QMessageBox.warning(self, "Error", "The sum of the ratios of train, validation, and test must be 100%!")
             return
         
         variable_col = self.variable_combobox.currentText()
 
-        self.train_data, self.validation_data, self.test_data = data_separation(self.dataframe[variable_col].copy(), self.train_percentage.value() / 100, self.valid_percentage.value() / 100)
-        
-        self.train_total.setText(str(len(self.train_data)))
-        self.valid_total.setText(str(len(self.validation_data)))
-        self.test_total.setText(str(len(self.test_data)))
+        self.train_data = {}
+        self.test_data = {}
+        self.validation_data = {}
 
+        self.na_marker_train = {}
+        self.na_marker_validation = {}
+        self.na_marker_test = {}
+
+        for column in self.dataframe.columns:   
+            self.train_data[column], self.validation_data[column], self.test_data[column] = data_separation(self.dataframe[column].copy(), self.train_percentage.value() / 100, self.valid_percentage.value() / 100)
+
+            self.na_marker_train[column] = self.train_data[column].isna()
+            self.na_marker_validation[column] = self.validation_data[column].isna()
+            self.na_marker_test[column] = self.test_data[column].isna()
+        
         self.imputed_train_data = self.train_data.copy()
         self.imputed_validation_data = self.validation_data.copy()
         self.imputed_test_data = self.test_data.copy()
-
-        self.na_marker_train = self.train_data.isna()
-        self.na_marker_validation = self.validation_data.isna()
-        self.na_marker_test = self.test_data.isna()
+        
+        self.train_total.setText(str(len(self.train_data[column])))
+        self.valid_total.setText(str(len(self.validation_data[column])))
+        self.test_total.setText(str(len(self.test_data[column])))
 
         self.main_plot_canvas.axes.cla()
 
-        self.train_plot, = self.main_plot_canvas.axes.plot(self.train_data.index, self.train_data, label="Actual Train", c='blue')
-        self.validation_plot, = self.main_plot_canvas.axes.plot(self.validation_data.index, self.validation_data, label="Actual Val", c='orange')
-        self.test_plot, = self.main_plot_canvas.axes.plot(self.test_data.index, self.test_data, label="Actual Test", c='yellow')
-        self.random_check_imputed_plot = self.main_plot_canvas.axes.scatter([], [])
-        self.random_check_actual_plot = self.main_plot_canvas.axes.scatter([], [])
+        self.train_plot, = self.main_plot_canvas.axes.plot(self.train_data[variable_col].index, self.train_data[variable_col], label="Actual Train")
+        self.validation_plot, = self.main_plot_canvas.axes.plot(self.validation_data[variable_col].index, self.validation_data[variable_col], label="Actual Val")
+        self.test_plot, = self.main_plot_canvas.axes.plot(self.test_data[variable_col].index, self.test_data[variable_col], label="Actual Test")
 
-        self.main_plot_canvas.axes.set_xlabel(self.train_data.index.name)
+        self.predict_plot, = self.main_plot_canvas.axes.plot([], [], label="Predict Test")
+
+        # self.random_check_imputed_plot = self.main_plot_canvas.axes.scatter([], [])
+        # self.random_check_actual_plot = self.main_plot_canvas.axes.scatter([], [])
+
+        # self.main_plot_canvas.axes.set_xlabel(self.train_data[variable_col].index.name)
         self.main_plot_canvas.axes.set_ylabel(variable_col)
         self.main_plot_canvas.axes.legend()
         self.main_plot_canvas.axes.grid(True, linestyle='--', alpha=0.6)
@@ -761,35 +882,289 @@ class UIMainWindow(QMainWindow):
         self.main_plot_canvas.figure.tight_layout()
         
         # Segarkan kanvas untuk menampilkan plot baru
-        self.main_plot_canvas.draw()    
+        self.main_plot_canvas.draw() 
+
+        self.imputation_method.setEnabled(True)   
+
+    def handle_show_plot_separation(self):
+        variable_col = self.variable_combobox.currentText()
+
+        try:
+            # Konversi kolom waktu ke format datetime (sangat penting untuk plot)
+            train_plot_df = self.train_data[variable_col].copy()
+            validation_plot_df = self.validation_data[variable_col].copy()
+            test_plot_df = self.test_data[variable_col].copy()
+
+            # Bersihkan plot sebelumnya
+            self.main_plot_canvas.axes.cla()
+
+            self.main_plot_canvas.axes.set_prop_cycle(None)
+            
+            self.train_plot, = self.main_plot_canvas.axes.plot(train_plot_df.index, train_plot_df, label="Actual Train")
+            self.validation_plot, = self.main_plot_canvas.axes.plot(validation_plot_df.index, validation_plot_df, label="Actual Val")
+            self.test_plot, = self.main_plot_canvas.axes.plot(test_plot_df.index, test_plot_df, label="Actual Test")
+
+            self.predict_plot, = self.main_plot_canvas.axes.plot([], [], label="Predict Test")
+
+            # self.random_check_imputed_plot = self.main_plot_canvas.axes.scatter([], [])
+            # self.random_check_actual_plot = self.main_plot_canvas.axes.scatter([], [])
+
+            # self.main_plot_canvas.axes.set_xlabel(self.train_data[variable_col].index.name)
+            self.main_plot_canvas.axes.set_ylabel(variable_col)
+            self.main_plot_canvas.axes.legend()
+            self.main_plot_canvas.axes.grid(True, linestyle='--', alpha=0.6)
+            self.main_plot_canvas.figure.autofmt_xdate()
+            self.main_plot_canvas.figure.tight_layout()
+            
+            # Segarkan kanvas untuk menampilkan plot baru
+            self.main_plot_canvas.draw()
+
+        except Exception as e:
+            QMessageBox.critical(self, "Error Plotting", f"Failed to create plot: {e}")
+            print(f"Error plotting: {e}")
+
+    def handle_show_plot_imputed(self):
+        # if self.dataframe is None:
+        #     QMessageBox.warning(self, "Error", "Data has not been loaded!")
+        #     return
+
+        variable_col = self.variable_combobox.currentText()
+
+        try:
+            # Konversi kolom waktu ke format datetime (sangat penting untuk plot)
+            # train_plot_df = self.imputed_train_data[variable_col].copy()
+            # validation_plot_df = self.imputed_validation_data[variable_col].copy()
+            # test_plot_df = self.imputed_test_data[variable_col].copy()
+
+            self.main_plot_canvas.axes.cla()
+
+            self.main_plot_canvas.axes.set_prop_cycle(None)
+            
+            self.train_plot, = self.main_plot_canvas.axes.plot(self.imputed_train_data[variable_col].copy().index, self.imputed_train_data[variable_col].copy(), label='Actual Train')
+            self.validation_plot, = self.main_plot_canvas.axes.plot(self.imputed_validation_data[variable_col].copy().index, self.imputed_validation_data[variable_col].copy(), label='Actual Val')
+            self.test_plot, = self.main_plot_canvas.axes.plot(self.imputed_test_data[variable_col].copy().index, self.imputed_test_data[variable_col].copy(), label='Actual Test')
+
+            self.predict_plot, = self.main_plot_canvas.axes.plot([], [], label="Predict Test")
+
+            self.random_check_imputed_plot = self.main_plot_canvas.axes.scatter([], [])
+            self.random_check_actual_plot = self.main_plot_canvas.axes.scatter([], [])
+
+            # self.main_plot_canvas.axes.set_xlabel(self.train_data[variable_col].index.name)
+            self.main_plot_canvas.axes.set_ylabel(variable_col)
+            self.main_plot_canvas.axes.legend()
+            self.main_plot_canvas.axes.grid(True, linestyle='--', alpha=0.6)
+            self.main_plot_canvas.figure.autofmt_xdate()
+            self.main_plot_canvas.figure.tight_layout()
+            
+            # Segarkan kanvas untuk menampilkan plot baru
+            self.main_plot_canvas.draw()
+
+        except Exception as e:
+            QMessageBox.critical(self, "Error Plotting", f"Failed to create plot: {e}")
+            print(f"Error plotting: {e}")
+
+    def handle_show_plot_scaled(self):
+        variable_col = self.variable_combobox.currentText()
+
+        try:
+            self.main_plot_canvas.axes.cla()
+
+            self.main_plot_canvas.axes.set_prop_cycle(None)
+            
+            self.train_plot, = self.main_plot_canvas.axes.plot(self.train_data[variable_col].copy().index, self.train_data_scaled[variable_col].copy(), label='Actual Train')
+            self.validation_plot, = self.main_plot_canvas.axes.plot(self.validation_data[variable_col].copy().index, self.validation_data_scaled[variable_col].copy(), label='Actual Val')
+            self.test_plot, = self.main_plot_canvas.axes.plot(self.test_data[variable_col].copy().index, self.test_data_scaled[variable_col].copy(), label='Actual Test')
+
+            self.predict_plot, = self.main_plot_canvas.axes.plot([], [], label="Predict Test")
+
+            self.main_plot_canvas.axes.set_ylabel(variable_col)
+            self.main_plot_canvas.axes.legend()
+            self.main_plot_canvas.axes.grid(True, linestyle='--', alpha=0.6)
+            self.main_plot_canvas.figure.autofmt_xdate()
+            self.main_plot_canvas.figure.tight_layout()
+            
+            # Segarkan kanvas untuk menampilkan plot baru
+            self.main_plot_canvas.draw()
+
+        except Exception as e:
+            QMessageBox.critical(self, "Error Plotting", f"Failed to create plot: {e}")
+            print(f"Error plotting: {e}")
+    
+    def handle_show_plot_predict(self):
+        variable_col = self.variable_combobox.currentText()
+
+        try:
+            self.main_plot_canvas.axes.cla()
+
+            self.main_plot_canvas.axes.set_prop_cycle(None)
+            
+            self.train_plot, = self.main_plot_canvas.axes.plot(self.imputed_train_data[variable_col].copy().index, self.imputed_train_data[variable_col].copy(), label='Actual Train')
+            self.validation_plot, = self.main_plot_canvas.axes.plot(self.imputed_validation_data[variable_col].copy().index, self.imputed_validation_data[variable_col].copy(), label='Actual Val')
+            self.test_plot, = self.main_plot_canvas.axes.plot(self.imputed_test_data[variable_col].copy().index, self.imputed_test_data[variable_col].copy(), label='Actual Test')
+
+            if self.scale_button.isChecked():
+                self.predict_plot, = self.main_plot_canvas.axes.plot(self.test_data[variable_col].index, self.scaler[variable_col].inverse_transform(self.y_predict[variable_col]), label="Predict Test")
+            else:
+                self.predict_plot, = self.main_plot_canvas.axes.plot(self.test_data[variable_col].index, self.y_predict[variable_col], label="Predict Test")
+
+            self.main_plot_canvas.axes.set_ylabel(variable_col)
+            self.main_plot_canvas.axes.legend()
+            self.main_plot_canvas.axes.grid(True, linestyle='--', alpha=0.6)
+            self.main_plot_canvas.figure.autofmt_xdate()
+            self.main_plot_canvas.figure.tight_layout()
+            
+            # Segarkan kanvas untuk menampilkan plot baru
+            self.main_plot_canvas.draw()
+
+        except Exception as e:
+            QMessageBox.critical(self, "Error Plotting", f"Failed to create plot: {e}")
+            print(f"Error plotting: {e}")
+    
 
     def handle_build_model_lstm(self):
-        self.X_train, self.y_train, self.X_val, self.y_val, self.X_test, self.y_test = create_sliding_window(self.imputed_train_data.copy(), self.imputed_validation_data.copy(), self.imputed_test_data.copy(), self.lstm_window_size_spinbox.value())
-    
-        lstm_units = [self.lstm_units_spinbox.value() for _ in range(self.lstm_layers_spinbox.value())] 
+        self.X_train = {}
+        self.y_train = {}
+        self.X_val = {}
+        self.y_val = {}
+        self.X_test = {}
+        self.y_test = {}
 
-        input_shape = (self.X_train.shape[1], self.X_train.shape[2])
+        self.ml_model = {}
 
-        self.lstm_model = build_lstm_model(
-            input_shape=input_shape,
-            lstm_units=lstm_units,
-            dropout_rate=self.lstm_dropout_spinbox.value()
-        )
+        for column in self.imputed_train_data:
+            if self.scale_button.isChecked():
+                self.X_train[column], self.y_train[column], self.X_val[column], self.y_val[column], self.X_test[column], self.y_test[column] = create_sliding_window(self.train_data_scaled[column].copy(), self.validation_data_scaled[column].copy(), self.test_data_scaled[column].copy(), self.lstm_window_size_spinbox.value())
+            else:    
+                self.X_train[column], self.y_train[column], self.X_val[column], self.y_val[column], self.X_test[column], self.y_test[column] = create_sliding_window(self.imputed_train_data[column].copy(), self.imputed_validation_data[column].copy(), self.imputed_test_data[column].copy(), self.lstm_window_size_spinbox.value())
+            
+            lstm_units = [self.lstm_units_spinbox.value() for _ in range(self.lstm_layers_spinbox.value())] 
+
+            input_shape = (self.X_train[column].shape[1], self.X_train[column].shape[2])
+
+            self.ml_model[column] = build_lstm_model(
+                model_type=self.lstm_type_combo.currentText(),
+                input_shape=input_shape,
+                lstm_units=lstm_units,
+                dropout_rate=self.lstm_dropout_spinbox.value()
+            )
+
+        QMessageBox.information(self, "Success", "Build Success.")
+
+        self.lstm_train_model_button.setEnabled(True)
 
     def handle_train_model_lstm(self):
-        self.lstm_model.compile(optimizer=self.lstm_optimizer_combo.currentText().lower(), loss=re.sub(r'[\s]', '_', self.lstm_loss_combo.currentText().lower()))
+        self.y_predict = {}
+        self.history = {}
 
-        self.history_lstm = self.lstm_model.fit(
-            self.X_train, 
-            self.y_train, 
-            epochs=self.lstm_epochs_spinbox.value(), 
-            batch_size=self.lstm_batch_spinbox.value(), 
-            validation_data=(self.X_val, self.y_val),
-            verbose = 0
-        )
+        for column in self.ml_model:
+            self.ml_model[column].compile(optimizer=self.lstm_optimizer_combo.currentText().lower(), loss=re.sub(r'[\s]', '_', self.lstm_loss_combo.currentText().lower()))
 
-        QMessageBox.information(self, "Sukses", "Model sudah dilatih.")
+            self.history[column] = self.ml_model[column].fit(
+                self.X_train[column], 
+                self.y_train[column], 
+                epochs=self.lstm_epochs_spinbox.value(), 
+                batch_size=self.lstm_batch_spinbox.value(), 
+                validation_data=(self.X_val[column], self.y_val[column]),
+                verbose = 0
+            )
 
-        y_predict = self.lstm_model.predict(self.X_test, verbose = 0)
-        self.lstm_mae_line.setText(f"{MAE(self.y_test, y_predict):.2E}")
-        self.lstm_mse_line.setText(f"{MSE(self.y_test, y_predict):.2E}")
+            self.lstm_show_loss_plot_button.setEnabled(True)
+
+            self.y_predict[column] = self.ml_model[column].predict(self.X_test[column], verbose = 0)
+        
+        variable_col = self.variable_combobox.currentText()
+
+        if self.scale_button.isChecked():
+            self.lstm_mae_line.setText(f"{MAE(self.scaler[variable_col].inverse_transform(self.y_test[variable_col].copy().reshape(-1, 1)), self.scaler[variable_col].inverse_transform(self.y_predict[variable_col].copy())):.2E}")
+            self.lstm_mse_line.setText(f"{MSE(self.scaler[variable_col].inverse_transform(self.y_test[variable_col].copy().reshape(-1, 1)), self.scaler[variable_col].inverse_transform(self.y_predict[variable_col].copy())):.2E}")
+        else:
+            self.lstm_mae_line.setText(f"{MAE(self.y_test[variable_col].copy(), self.y_predict[variable_col].copy()):.2E}")
+            self.lstm_mse_line.setText(f"{MSE(self.y_test[variable_col].copy(), self.y_predict[variable_col].copy()):.2E}")
+
+        # print(variable_col)
+
+        # print(self.y_predict[variable_col])
+
+        self.predict_plot.remove()
+
+        if self.scale_button.isChecked():
+            self.predict_plot, = self.main_plot_canvas.axes.plot(self.test_data[variable_col].index, self.scaler[variable_col].inverse_transform(self.y_predict[variable_col]), label="Predict Test")
+        else:
+            self.predict_plot, = self.main_plot_canvas.axes.plot(self.test_data[variable_col].index, self.y_predict[variable_col], label="Predict Test")
+
+        self.main_plot_canvas.axes.legend()
+        self.main_plot_canvas.draw()  
+
+        self.forecast_button.setEnabled(True)
+
+        QMessageBox.information(self, "Success", "Training Success.")
+
+    def handle_loss_function(self):
+        self.loss_function_win = LossFunctionWindow(self.history[self.variable_combobox.currentText()])
+        self.loss_function_win.show()
+
+    def handle_forecast_lstm(self):
+        features = []
+
+        for column in self.dataframe.columns:
+            last_known_sequence = self.X_test[column][-1]
+
+            future_forecast = forecast_lstm(
+                model=self.ml_model[column],
+                initial_sequence=last_known_sequence,
+                n_steps_to_predict=self.forecast_steps_spinbox.value()
+            )
+
+            # if not isinstance(self.train_data, pd.Series):
+            #     train_data = pd.Series(self.train_data[column].reshape(-1))
+            #     validation_data = pd.Series(self.validation_data[column].reshape(-1))
+            #     test_data = pd.Series(self.test_data[column].reshape(-1))
+
+            # feature_past = np.concatenate([
+            #     self.imputed_train_data.values, 
+            #     self.imputed_validation_data.values, 
+            #     self.imputed_test_data.values
+            # ]) 
+
+            feature_past = np.concatenate([
+                self.imputed_train_data[column].values, 
+                self.imputed_validation_data[column].values, 
+                self.imputed_test_data[column].values
+            ]) 
+
+            feature_past = pd.Series(feature_past)
+
+            if self.scale_button.isChecked():
+                feature_future = self.scaler[column].inverse_transform(future_forecast)
+                feature_future = pd.Series(feature_future.reshape(-1))
+
+                feature = pd.concat([feature_past, feature_future], ignore_index=True)
+
+                features.append(feature)
+            else:
+                feature_future = pd.Series(future_forecast.reshape(-1))
+
+                feature = pd.concat([feature_past, feature_future], ignore_index=True)
+                features.append(feature)
+        
+        pfvi_values = fire_predict(Temp=features[0], WT=features[1], SM=features[2], Rf=features[3])
+
+        self.main_plot_canvas.axes.cla()
+
+        self.main_plot_canvas.axes.set_prop_cycle(None)
+
+        self.train_plot, = self.main_plot_canvas.axes.plot(self.imputed_train_data[column].copy().index, pfvi_values[self.imputed_train_data[column].copy().index], label='PFVI Train')
+        self.validation_plot, = self.main_plot_canvas.axes.plot(self.imputed_validation_data[column].copy().index, pfvi_values[self.imputed_validation_data[column].copy().index], label='PFVI Val')
+        self.test_plot, = self.main_plot_canvas.axes.plot(self.imputed_test_data[column].copy().index, pfvi_values[self.imputed_test_data[column].copy().index], label='PFVI Test')
+
+        predicted_index = [self.imputed_test_data[column].copy().index[-1] + 1 + i for i in range(self.forecast_steps_spinbox.value())]
+        self.pfvi_plot = self.main_plot_canvas.axes.plot(predicted_index, pfvi_values[predicted_index], label="PFVI Predicted")
+
+        self.main_plot_canvas.axes.set_ylabel("PFVI")
+        self.main_plot_canvas.axes.legend()
+        self.main_plot_canvas.axes.grid(True, linestyle='--', alpha=0.6)
+        self.main_plot_canvas.figure.autofmt_xdate()
+        self.main_plot_canvas.figure.tight_layout()
+        
+        # Segarkan kanvas untuk menampilkan plot baru
+        self.main_plot_canvas.draw()

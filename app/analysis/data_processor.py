@@ -2,6 +2,7 @@
 
 from sklearn.metrics import mean_squared_error, mean_absolute_error
 from sklearn.preprocessing import StandardScaler
+from sklearn.preprocessing import MinMaxScaler
 
 import pandas as pd
 import numpy as np
@@ -30,17 +31,18 @@ def import_data(file_path):
     try:
         if extension == '.csv':
             df = pd.read_csv(file_path)
-            df = set_datetime_index(df)
+            # df = set_datetime_index(df)
             return df, None
         
         elif extension in ['.xlsx', '.xls']:
             df = pd.read_excel(file_path)
-            df = set_datetime_index(df)
+            # df.drop("Tanggal", axis=1, inplace=True)
+            # df = set_datetime_index(df)
             return df, None
             
         elif extension == '.json':
             df = pd.read_json(file_path)
-            df = set_datetime_index(df)
+            # df = set_datetime_index(df)
             return df, None
             
         else:
@@ -58,11 +60,18 @@ def set_datetime_index(dataframe):
     for column in dataframe.columns:
         try:
             dataframe[column] = pd.to_datetime(dataframe[column])
+            # d1 = pd.to_datetime(data, format='%d-%m-%Y', errors='coerce')
+
+            # # For the remaining NaT values, try another format
+            # d2 = pd.to_datetime(data, format='%B %d, %Y', errors='coerce')
+
+            # # And another one...
+            # d3 = pd.to_datetime(data, format='%Y/%m/%d', errors='coerce')
+
             dataframe.set_index(column, inplace=True)
             return dataframe
         except Exception:
             continue 
-    raise ValueError(f"Tidak ada kolom waktu")
 
 def data_imputation(dataframe, method):
     if method == 'Forward':
@@ -96,11 +105,22 @@ def data_separation(dataframe, train_ratio, valid_ratio):
     return train_data, validation_data, test_data
 
 def feature_scaling(train_data, validation_data, test_data):
-    scaler = StandardScaler()
+    if isinstance(train_data, pd.Series):
+        train_data = train_data.to_numpy()
+        validation_data = validation_data.to_numpy()
+        test_data = test_data.to_numpy()
+
+    if train_data.ndim == 1:
+        # Reshape 1D arrays to 2D for the scaler
+        train_data = train_data.reshape(-1, 1)
+        validation_data = validation_data.reshape(-1, 1)
+        test_data = test_data.reshape(-1, 1)
+
+    scaler = MinMaxScaler()
     scaler.fit(train_data)
 
     train_data_scaled = scaler.transform(train_data)
     validation_data_scaled = scaler.transform(validation_data)
     test_data_scaled = scaler.transform(test_data)
 
-    return train_data_scaled, validation_data_scaled, test_data_scaled 
+    return train_data_scaled, validation_data_scaled, test_data_scaled, scaler

@@ -52,7 +52,7 @@ class SummaryWindow(QWidget):
         super().__init__()
         
         self.dataframe = dataframe
-        self.setWindowTitle("Ringkasan Visual & Statistik")
+        self.setWindowTitle("Visual & Statistical Summary")
         self.setGeometry(200, 200, 800, 700) # Perbesar ukuran jendela
         
         # Gunakan layout utama untuk menampung splitter
@@ -114,3 +114,43 @@ class SummaryWindow(QWidget):
             self.table_view.resizeColumnsToContents()
         except Exception as e:
             print(f"Tidak dapat membuat tabel ringkasan: {e}")
+
+class LossFunctionWindow(QWidget):
+    """
+    Jendela terpisah yang sekarang menampilkan box plot DAN tabel ringkasan.
+    """
+    def __init__(self, history):
+        super().__init__()
+        
+        self.history = history
+        self.setWindowTitle("Loss Function")
+        self.setGeometry(200, 200, 500, 500) # Perbesar ukuran jendela
+        
+        # Gunakan layout utama untuk menampung splitter
+        main_layout = QVBoxLayout(self)
+        
+        # 2. Buat dan tambahkan kanvas plot ke splitter
+        self.plot_canvas = MplCanvas(self, width=5, height=4, dpi=50)
+        main_layout.addWidget(self.plot_canvas)
+        
+        # 4. Panggil fungsi untuk mengisi konten
+        self.plot_loss_function()
+        
+    def plot_loss_function(self):
+        try:
+            # Bersihkan plot sebelumnya
+            self.plot_canvas.axes.cla()
+            
+            self.plot_canvas.axes.plot(self.history.history['loss'], label='Training Loss')
+            self.plot_canvas.axes.plot(self.history.history['val_loss'], label='Validation Loss')
+            self.plot_canvas.axes.set_xlabel('Epochs')
+            self.plot_canvas.axes.set_ylabel('Loss')
+            self.plot_canvas.axes.set_title('Loss Function Plot')
+            self.plot_canvas.axes.grid(True, linestyle='--', alpha=0.6)
+            self.plot_canvas.figure.tight_layout() # Merapikan layout plot
+            self.plot_canvas.draw() # Menggambar ulang kanvas
+            
+        except Exception as e:
+            print(f"Failed to create loss function plot: {e}")
+            self.plot_canvas.axes.text(0.5, 0.5, f'Error: {e}', 
+                                       horizontalalignment='center', verticalalignment='center')
