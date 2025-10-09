@@ -24,7 +24,7 @@ from analysis.lstm import (
     create_sliding_window, build_lstm_model, forecast_lstm
 )
 
-from analysis.fire_predict import fire_predict
+from analysis.fire_predict import fire_predict, calculate_pfvi, calculate_kdbi
 
 class UIMainWindow(QMainWindow):
     def __init__(self):
@@ -415,7 +415,7 @@ class UIMainWindow(QMainWindow):
         build_col = self.create_lstm_build_column()
         train_col = self.create_lstm_train_column()
         eval_col = self.create_lstm_eval_column()
-        forecast_col = self.create_lstm_forecast_column()
+        # forecast_col = self.create_lstm_forecast_column()
 
         # Menambahkan setiap kolom ke layout utama dengan stretch factor
         main_layout.addWidget(build_col, 2)
@@ -538,35 +538,35 @@ class UIMainWindow(QMainWindow):
         group_box.setLayout(layout)
         return group_box
 
-    def create_lstm_forecast_column(self):
-        """Membuat kolom keempat: Prediksi."""
-        group_box = QGroupBox("Forecasting")
-        layout = QVBoxLayout()
+    # def create_lstm_forecast_column(self):
+    #     """Membuat kolom keempat: Prediksi."""
+    #     group_box = QGroupBox("Forecasting")
+    #     layout = QVBoxLayout()
         
-        # Kontrol di bagian atas
-        control_widget = QWidget()
-        control_layout = QFormLayout(control_widget)
+    #     # Kontrol di bagian atas
+    #     control_widget = QWidget()
+    #     control_layout = QFormLayout(control_widget)
         
-        self.lstm_forecast_steps_spinbox = QSpinBox()
-        self.lstm_forecast_steps_spinbox.setMinimum(1)
-        self.lstm_forecast_steps_spinbox.setValue(12)
+    #     self.lstm_forecast_steps_spinbox = QSpinBox()
+    #     self.lstm_forecast_steps_spinbox.setMinimum(1)
+    #     self.lstm_forecast_steps_spinbox.setValue(12)
 
-        self.lstm_forecast_button = QPushButton("Forecast")
-        self.lstm_forecast_button.setEnabled(False)
-        self.lstm_forecast_button.clicked.connect(self.handle_forecast_lstm) 
+    #     self.lstm_forecast_button = QPushButton("Forecast")
+    #     self.lstm_forecast_button.setEnabled(False)
+    #     self.lstm_forecast_button.clicked.connect(self.handle_forecast_lstm) 
         
-        control_layout.addRow("Forecast Steps:", self.lstm_forecast_steps_spinbox)
-        control_layout.addRow(self.lstm_forecast_button)
+    #     control_layout.addRow("Forecast Steps:", self.lstm_forecast_steps_spinbox)
+    #     control_layout.addRow(self.lstm_forecast_button)
         
-        # Plot di bagian bawah
-        # self.lstm_forecast_canvas = MplCanvas(self)
-        # self.create_placeholder_plot(self.lstm_forecast_canvas, "Plot Hasil Prediksi LSTM")
+    #     # Plot di bagian bawah
+    #     # self.lstm_forecast_canvas = MplCanvas(self)
+    #     # self.create_placeholder_plot(self.lstm_forecast_canvas, "Plot Hasil Prediksi LSTM")
         
-        layout.addWidget(control_widget)
-        # layout.addWidget(self.lstm_forecast_canvas) # Plot mengisi sisa ruang
+    #     layout.addWidget(control_widget)
+    #     # layout.addWidget(self.lstm_forecast_canvas) # Plot mengisi sisa ruang
         
-        group_box.setLayout(layout)
-        return group_box
+    #     group_box.setLayout(layout)
+    #     return group_box
     
     def create_fire_index_tab(self):
         fire_index_tab_widget = QWidget()
@@ -576,13 +576,32 @@ class UIMainWindow(QMainWindow):
 
         # Membuat setiap kolom menggunakan fungsi pembantu
         fire_index_col = self.create_fire_index_column()
+        predict_fire_index_col = self.create_predict_fire_index_column()
 
         # Menambahkan setiap kolom ke layout utama dengan stretch factor
         main_layout.addWidget(fire_index_col, 1, Qt.AlignmentFlag.AlignLeft)
+        main_layout.addWidget(predict_fire_index_col, 1, Qt.AlignmentFlag.AlignLeft)
 
         return fire_index_tab_widget
 
     def create_fire_index_column(self):
+        group_box = QGroupBox("Calculate Drought Index")
+        layout = QGridLayout()
+
+        self.drought_index_combo = QComboBox()
+        self.drought_index_combo.setPlaceholderText("Choose Drought Index")
+        self.drought_index_combo.addItems(["KDBI", "KDBI(adj)", "mKDBI", "PFVI"])
+        self.drought_index_combo.currentIndexChanged.connect(self.on_drought_index_selected)
+        self.drought_index_combo.setEnabled(False)
+        
+        layout.addWidget(QLabel("Drought Index"), 0, 0)
+        layout.addWidget(self.drought_index_combo, 0, 1)
+
+        group_box.setLayout(layout)
+
+        return group_box
+    
+    def create_predict_fire_index_column(self):
         group_box = QGroupBox("Calculate Fire Index")
         layout = QGridLayout()
 
@@ -590,18 +609,13 @@ class UIMainWindow(QMainWindow):
         self.forecast_steps_spinbox.setMinimum(1)
         self.forecast_steps_spinbox.setValue(12)
 
-        self.optim_method_combo = QComboBox()
-        self.optim_method_combo.addItems(["Nelder-Mead"])
-
         self.forecast_button = QPushButton("Forecast")
         self.forecast_button.setEnabled(False)
-        self.forecast_button.clicked.connect(self.handle_forecast_lstm) 
+        self.forecast_button.clicked.connect(self.handle_predict_drought_index) 
 
         layout.addWidget(QLabel("Forecast Steps:"), 0, 0)
         layout.addWidget(self.forecast_steps_spinbox, 0, 1)
-        layout.addWidget(QLabel("optimization method"), 1, 0)
-        layout.addWidget(self.optim_method_combo, 1, 1)
-        layout.addWidget(self.forecast_button, 2, 0, 1, 2)
+        layout.addWidget(self.forecast_button, 1, 0, 1, 2)
 
         group_box.setLayout(layout)
 
@@ -628,7 +642,7 @@ class UIMainWindow(QMainWindow):
     def on_variable_column_selected(self, index):
         if index >= 0:
             if self.imputation_method.isEnabled():
-                if self.forecast_button.isEnabled():
+                if self.drought_index_combo.isEnabled():
                     self.handle_show_plot_predict()
                 elif self.imputation_method.currentIndex() > -1:
                     self.handle_show_plot_imputed()
@@ -680,6 +694,9 @@ class UIMainWindow(QMainWindow):
 
             self.main_plot_canvas.axes.legend()
             self.main_plot_canvas.draw()
+
+    def on_drought_index_selected(self, index):
+        self.handle_optimize_drought_index_params(index)
 
     def on_random_check_state_changed(self, state):
         if state == 2:
@@ -1095,7 +1112,7 @@ class UIMainWindow(QMainWindow):
         self.main_plot_canvas.axes.legend()
         self.main_plot_canvas.draw()  
 
-        self.forecast_button.setEnabled(True)
+        self.drought_index_combo.setEnabled(True)
 
         QMessageBox.information(self, "Success", "Training Success.")
 
@@ -1103,7 +1120,50 @@ class UIMainWindow(QMainWindow):
         self.loss_function_win = LossFunctionWindow(self.history[self.variable_combobox.currentText()])
         self.loss_function_win.show()
 
-    def handle_forecast_lstm(self):
+    def handle_optimize_drought_index_params(self, index):
+        features = []
+
+        for column in self.dataframe.columns:
+            feature_past = np.concatenate([
+                self.imputed_train_data[column].values, 
+                self.imputed_validation_data[column].values, 
+                self.imputed_test_data[column].values
+            ]) 
+
+            feature_past = pd.Series(feature_past)
+
+            features.append(feature_past)
+        
+        if index == 3:
+            drought_index_values, self.params = fire_predict(Temp=features[0], WT=features[1], SM=features[2], Rf=features[3])
+        else:
+            Rf_b = np.roll(features[3], 1)
+            Rf_b[0] = np.nan
+
+            drought_index_values = calculate_kdbi(Temp=features[0], SM=features[2], Rf=features[3], Rf_b=Rf_b, R0=3000, dt=1)
+        
+        self.main_plot_canvas.axes.cla()
+
+        self.main_plot_canvas.axes.set_prop_cycle(None)
+
+        self.drought_index_plot, = self.main_plot_canvas.axes.plot(self.dataframe.index, drought_index_values[self.dataframe.index], label='Drought Index')
+
+        self.drought_index_predicted_plot = self.main_plot_canvas.axes.plot([], [])
+
+        # predicted_index = [self.imputed_test_data[column].copy().index[-1] + 1 + i for i in range(self.forecast_steps_spinbox.value())]
+        # self.drought_index_plot = self.main_plot_canvas.axes.plot(predicted_index, drought_index_values[predicted_index], label="drought_index Predicted")
+
+        self.main_plot_canvas.axes.set_ylabel("Drought Index")
+        self.main_plot_canvas.axes.legend()
+        self.main_plot_canvas.axes.set_ylim([-5, 305])
+        self.main_plot_canvas.axes.grid(True, linestyle='--', alpha=0.6)
+        self.main_plot_canvas.figure.autofmt_xdate()
+        self.main_plot_canvas.figure.tight_layout()
+        
+        # Segarkan kanvas untuk menampilkan plot baru
+        self.main_plot_canvas.draw()
+    
+    def handle_predict_drought_index(self):
         features = []
 
         for column in self.dataframe.columns:
@@ -1115,53 +1175,39 @@ class UIMainWindow(QMainWindow):
                 n_steps_to_predict=self.forecast_steps_spinbox.value()
             )
 
-            # if not isinstance(self.train_data, pd.Series):
-            #     train_data = pd.Series(self.train_data[column].reshape(-1))
-            #     validation_data = pd.Series(self.validation_data[column].reshape(-1))
-            #     test_data = pd.Series(self.test_data[column].reshape(-1))
-
-            # feature_past = np.concatenate([
-            #     self.imputed_train_data.values, 
-            #     self.imputed_validation_data.values, 
-            #     self.imputed_test_data.values
-            # ]) 
-
-            feature_past = np.concatenate([
-                self.imputed_train_data[column].values, 
-                self.imputed_validation_data[column].values, 
-                self.imputed_test_data[column].values
-            ]) 
-
-            feature_past = pd.Series(feature_past)
-
             if self.scale_button.isChecked():
                 feature_future = self.scaler[column].inverse_transform(future_forecast)
                 feature_future = pd.Series(feature_future.reshape(-1))
 
-                feature = pd.concat([feature_past, feature_future], ignore_index=True)
-
-                features.append(feature)
+                features.append(feature_future)
             else:
                 feature_future = pd.Series(future_forecast.reshape(-1))
 
-                feature = pd.concat([feature_past, feature_future], ignore_index=True)
-                features.append(feature)
+                features.append(feature_future)
         
-        pfvi_values = fire_predict(Temp=features[0], WT=features[1], SM=features[2], Rf=features[3])
+        if self.drought_index_combo.currentIndex() == 3:
+            Rf_b = np.roll(features[3], 1)
+            Rf_b[0] = np.nan
+
+            pfvi_values = calculate_pfvi(params=self.params, Temp=features[0], WT=features[1], SM=features[2], Rf=features[3], Rf_b=Rf_b, R0=3000, dt=1)
+        elif self.drought_index_combo.currentIndex() == 0:
+            Rf_b = np.roll(features[3], 1)
+            Rf_b[0] = np.nan
+
+            pfvi_values = calculate_kdbi(params=self.params, Temp=features[0], WT=features[1], SM=features[2], Rf=features[3], Rf_b=Rf_b, R0=3000, dt=1)
 
         self.main_plot_canvas.axes.cla()
 
         self.main_plot_canvas.axes.set_prop_cycle(None)
 
-        self.train_plot, = self.main_plot_canvas.axes.plot(self.imputed_train_data[column].copy().index, pfvi_values[self.imputed_train_data[column].copy().index], label='PFVI Train')
-        self.validation_plot, = self.main_plot_canvas.axes.plot(self.imputed_validation_data[column].copy().index, pfvi_values[self.imputed_validation_data[column].copy().index], label='PFVI Val')
-        self.test_plot, = self.main_plot_canvas.axes.plot(self.imputed_test_data[column].copy().index, pfvi_values[self.imputed_test_data[column].copy().index], label='PFVI Test')
+        self.pfvi_plot, = self.main_plot_canvas.axes.plot(self.dataframe.index, pfvi_values[self.dataframe.index], label='PFVI')
 
-        predicted_index = [self.imputed_test_data[column].copy().index[-1] + 1 + i for i in range(self.forecast_steps_spinbox.value())]
+        predicted_index = [self.dataframe.index[-1] + 1 + i for i in range(self.forecast_steps_spinbox.value())]
         self.pfvi_plot = self.main_plot_canvas.axes.plot(predicted_index, pfvi_values[predicted_index], label="PFVI Predicted")
 
         self.main_plot_canvas.axes.set_ylabel("PFVI")
         self.main_plot_canvas.axes.legend()
+        self.main_plot_canvas.axes.set_ylim([-5, 305])
         self.main_plot_canvas.axes.grid(True, linestyle='--', alpha=0.6)
         self.main_plot_canvas.figure.autofmt_xdate()
         self.main_plot_canvas.figure.tight_layout()

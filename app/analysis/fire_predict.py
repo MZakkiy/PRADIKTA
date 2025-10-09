@@ -8,9 +8,15 @@ import pandas as pd
 
 def df_factor(pfvi_prev, temp, r0):
     """Calculates the Drying Factor (DF)."""
-    # Note: The original R code had a * dt * 10^(-3) term. 
-    # Since dt=1, this is just a scaling factor. The formula below is matched.
     return (300 - pfvi_prev) * (0.4982 * np.exp(0.0905 * temp + 1.6096) - 4.268) * 10**(-3) / (1 + 10.88 * np.exp(-0.00173582677165354 * r0))
+
+def df_factor_kdbi(kdbi_prev, temp, r0):
+    """Calculates the Drying Factor (DF)."""
+    return (203 - kdbi_prev) * (0.968 * np.exp(0.0875 * temp + 1.552) - 8.3) * 10**(-3) / (1 + 10.88 * np.exp(-0.00173582677165354 * r0))
+
+def df_factor_kdbi_adj(kdbi_prev, temp, r0):
+    """Calculates the Drying Factor (DF)."""
+    return (203 - kdbi_prev) * (0.4982 * np.exp(0.0905 * temp + 1.6096) - 4.268) * 10**(-3) / (1 + 10.88 * np.exp(-0.00173582677165354 * r0))
 
 def rf_factor(rf_current, rf_before):
     """Calculates the Rainfall Factor (RF)."""
@@ -61,6 +67,40 @@ def calculate_pfvi(params, WT, SM, Rf, Rf_b, Temp, R0, dt):
         
     return x[1:] # Return the calculated PFVI series
 
+def calculate_kdbi(SM, Rf, Rf_b, Temp, R0, dt):
+    time_steps = len(SM)
+    
+    x = np.zeros(time_steps + 1)
+    # Initialize PFVI with the first observed value
+    x[0] = di_obs(SM[0], 40, 70) 
+
+    for i in range(time_steps):
+        x0 = np.clip(x[i], 0, 300) # Ensure PFVI is within bounds [0, 300]
+        
+        df = df_factor_kdbi(x0, Temp[i], R0) * dt
+        rf = rf_factor(Rf[i], Rf_b[i])
+    
+        x[i+1] = x0 + df - rf 
+        
+    return x[1:] # Return the calculated PFVI series
+
+def calculate_kdbi_adj(SM, Rf, Rf_b, Temp, R0, dt):
+    time_steps = len(SM)
+    
+    x = np.zeros(time_steps + 1)
+    # Initialize PFVI with the first observed value
+    x[0] = di_obs(SM[0], 40, 70) 
+
+    for i in range(time_steps):
+        x0 = np.clip(x[i], 0, 300) # Ensure PFVI is within bounds [0, 300]
+        
+        df = df_factor_kdbi(x0, Temp[i], R0) * dt
+        rf = rf_factor(Rf[i], Rf_b[i])
+    
+        x[i+1] = x0 + df - rf 
+        
+    return x[1:] # Return the calculated PFVI series
+
 def objective_function(params, WT, SM, Rf, Rf_b, Temp, R0, dt):
     """Objective function to be minimized. Calculates Mean Squared Error (MSE)."""
     # Run the model with the trial parameters
@@ -94,7 +134,7 @@ def fire_predict(WT, SM, Rf, Temp, R0=3000, dt=1, optim_method="Nelder-Mead"):
     
     # Create the "rainfall before" series by shifting the rainfall data
     Rf_b = np.roll(Rf, 1)
-    Rf_b[0] = np.nan # First element has no preceding value
+    Rf_b[0] = np.nan 
 
     # --- Optimization ---
     # The R code uses a brute-force grid search to find a good starting point.
@@ -139,7 +179,7 @@ def fire_predict(WT, SM, Rf, Temp, R0=3000, dt=1, optim_method="Nelder-Mead"):
     # Clip the final values to be within the [0, 300] range
     final_pfvi_clipped = np.clip(final_pfvi, 0, 300)
     
-    return final_pfvi_clipped
+    return final_pfvi_clipped, best_params
 
 
 if __name__ == '__main__':
