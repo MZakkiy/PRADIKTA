@@ -15,6 +15,8 @@ import re
 import pandas as pd
 import numpy as np
 
+import mplcursors
+
 from analysis.data_processor import (
     import_data, count_na, data_imputation, remove_random_data, 
     MAE, MSE, data_separation, feature_scaling
@@ -24,7 +26,10 @@ from analysis.lstm import (
     create_sliding_window, build_lstm_model, forecast_lstm
 )
 
-from analysis.fire_predict import fire_predict, calculate_pfvi, calculate_kdbi
+from analysis.fire_predict import (
+    fire_predict, calculate_pfvi, calculate_kdbi, calculate_kdbi_adj,
+    calculate_mkdbi, fire_danger
+)
 
 class UIMainWindow(QMainWindow):
     def __init__(self):
@@ -250,160 +255,6 @@ class UIMainWindow(QMainWindow):
         
         return data_tab_widget
 
-    def create_arima_tab(self):
-        """Fungsi utama untuk membuat semua konten di dalam tab ARIMA SARIMA."""
-        arima_tab_widget = QWidget()
-        main_layout = QHBoxLayout(arima_tab_widget)
-        # main_layout.setContentsMargins(15, 15, 15, 15)
-        # main_layout.setSpacing(15)
-
-        # Membuat setiap kolom menggunakan fungsi pembantu
-        controls_col = self.create_arima_controls_column()
-        acf_pacf_col = self.create_acf_pacf_column()
-        params_col = self.create_parameter_column()
-        eval_col = self.create_evaluation_column()
-        forecast_col = self.create_forecast_column()
-
-        # Menambahkan setiap kolom ke layout utama
-        main_layout.addWidget(controls_col, 1)
-        main_layout.addWidget(acf_pacf_col, 3) # Stretch factor 1
-        main_layout.addWidget(params_col, 2)
-        main_layout.addWidget(eval_col, 2)
-        main_layout.addWidget(forecast_col, 1)
-
-        return arima_tab_widget
-
-    def create_arima_controls_column(self):
-        """Membuat kolom pertama: Kontrol dan Uji Stasioneritas."""
-        group_box = QGroupBox("Stationer")
-        layout = QGridLayout()
-        # layout.setAlignment(Qt.AlignmentFlag.AlignTop)
-        
-        layout.addWidget(QLabel("Differentiate"), 0, 0)
-        self.n_differentiate = QSpinBox()
-        layout.addWidget(self.n_differentiate, 0, 1)
-        
-        layout.addWidget(QLabel("ADF Test"), 1, 0)
-        self.adf_pvalue_line = QLineEdit("N/A")
-        self.adf_pvalue_line.setReadOnly(True)
-        layout.addWidget(self.adf_pvalue_line, 1, 1)
-        
-        layout.addWidget(QLabel("Show Lags"), 2, 0)
-        self.lags_spinbox = QSpinBox()
-        self.lags_spinbox.setRange(10, 100)
-        self.lags_spinbox.setValue(30)
-        layout.addWidget(self.lags_spinbox, 2, 1)
-        
-        group_box.setLayout(layout)
-        return group_box
-
-    def create_acf_pacf_column(self):
-        """Membuat kolom kedua: Plot ACF dan PACF."""
-        # Menggunakan QVBoxLayout untuk menumpuk plot secara vertikal
-        plot_container = QWidget()
-        layout = QVBoxLayout(plot_container)
-        
-        self.acf_canvas = MplCanvas(self, width=4, height=1, dpi=30)
-        self.pacf_canvas = MplCanvas(self, width=4, height=1, dpi=30)
-        
-        # Inisialisasi dengan placeholder
-        # self.create_placeholder_plot(self.acf_canvas, "ACF Plot")
-        # self.create_placeholder_plot(self.pacf_canvas, "PACF Plot")
-        
-        layout.addWidget(self.acf_canvas)
-        layout.addWidget(self.pacf_canvas)
-        
-        return plot_container
-
-    def create_parameter_column(self):
-        """Membuat kolom ketiga: Parameter Model SARIMA."""
-        group_box = QGroupBox("Model Parameter")
-        layout = QGridLayout()
-        # layout.setAlignment(Qt.AlignmentFlag.AlignTop)
-
-        # Parameter (p, d, q)
-        layout.addWidget(QLabel("AR"), 0, 0)
-        self.p_spinbox = QSpinBox()
-        layout.addWidget(self.p_spinbox, 0, 1)
-        
-        # layout.addWidget(QLabel("I"), 0, 2)
-        # self.d_spinbox = QSpinBox()
-        # layout.addWidget(self.d_spinbox, 0, 3)
-        
-        layout.addWidget(QLabel("MA"), 0, 2)
-        self.q_spinbox = QSpinBox()
-        layout.addWidget(self.q_spinbox, 0, 3)
-        
-        # Parameter Musiman (P, D, Q, m)
-        layout.addWidget(QLabel("SAR"), 1, 0)
-        self.P_spinbox = QSpinBox()
-        layout.addWidget(self.P_spinbox, 1, 1)
-
-        # layout.addWidget(QLabel("SI"), 1, 2)
-        # self.D_spinbox = QSpinBox()
-        # layout.addWidget(self.D_spinbox, 1, 3)
-
-        layout.addWidget(QLabel("SMA"), 1, 2)
-        self.Q_spinbox = QSpinBox()
-        layout.addWidget(self.Q_spinbox, 1, 3)
-
-        layout.addWidget(QLabel("Seasonality"), 2, 0)
-        self.m_spinbox = QSpinBox()
-        layout.addWidget(self.m_spinbox, 2, 1)
-        
-        layout.addWidget(QPushButton("Fit Model"), 2, 2, 1, 2)
-        
-        group_box.setLayout(layout)
-        return group_box
-
-    def create_evaluation_column(self):
-        """Membuat kolom keempat: Metrik Evaluasi."""
-        group_box = QGroupBox("Model Parameter")
-        # QFormLayout ideal untuk pasangan label-field
-        layout = QGridLayout()
-        layout.setAlignment(Qt.AlignmentFlag.AlignTop)
-        
-        self.aic_line = QLineEdit("N/A")
-        self.aic_line.setReadOnly(True)
-        
-        self.bic_line = QLineEdit("N/A")
-        self.bic_line.setReadOnly(True)
-        
-        self.ljung_box_line = QLineEdit("N/A")
-        self.ljung_box_line.setReadOnly(True)
-
-        self.aic_line = QLineEdit("N/A")
-        self.aic_line.setReadOnly(True)
-
-        layout.addWidget(QLabel("AIC"), 0, 0)
-        layout.addWidget(self.aic_line, 1, 0)
-
-        layout.addWidget(QLabel("BIC"), 0, 1)
-        layout.addWidget(self.bic_line, 1, 1)
-        
-        layout.addWidget(QLabel("Ljung-Box Test"), 0, 2)
-        layout.addWidget(self.ljung_box_line, 1, 2)
-        
-        group_box.setLayout(layout)
-        return group_box
-        
-    def create_forecast_column(self):
-        """Membuat kolom kelima: Prediksi."""
-        group_box = QGroupBox("Forecasting")
-        layout = QVBoxLayout()
-        
-        layout.addWidget(QLabel("Forecast"))
-        self.forecast_steps_spinbox = QSpinBox()
-        self.forecast_steps_spinbox.setMinimum(1)
-        self.forecast_steps_spinbox.setValue(12)
-        layout.addWidget(self.forecast_steps_spinbox)
-        
-        layout.addWidget(QPushButton("Forecast"))
-        
-        layout.addStretch()
-        group_box.setLayout(layout)
-        return group_box
-
     def create_lstm_tab(self):
         """Fungsi utama untuk membuat semua konten di dalam tab LSTM."""
         lstm_tab_widget = QWidget()
@@ -450,7 +301,7 @@ class UIMainWindow(QMainWindow):
         self.lstm_dropout_spinbox.setValue(0.2)
 
         self.lstm_type_combo = QComboBox()
-        self.lstm_type_combo.addItems(["LSTM", "GRU", "Bi-LSTM"])
+        self.lstm_type_combo.addItems(["LSTM", "GRU"])
 
         self.lstm_build_model_button = QPushButton("Build Model")
         self.lstm_build_model_button.clicked.connect(self.handle_build_model_lstm)
@@ -537,36 +388,6 @@ class UIMainWindow(QMainWindow):
         
         group_box.setLayout(layout)
         return group_box
-
-    # def create_lstm_forecast_column(self):
-    #     """Membuat kolom keempat: Prediksi."""
-    #     group_box = QGroupBox("Forecasting")
-    #     layout = QVBoxLayout()
-        
-    #     # Kontrol di bagian atas
-    #     control_widget = QWidget()
-    #     control_layout = QFormLayout(control_widget)
-        
-    #     self.lstm_forecast_steps_spinbox = QSpinBox()
-    #     self.lstm_forecast_steps_spinbox.setMinimum(1)
-    #     self.lstm_forecast_steps_spinbox.setValue(12)
-
-    #     self.lstm_forecast_button = QPushButton("Forecast")
-    #     self.lstm_forecast_button.setEnabled(False)
-    #     self.lstm_forecast_button.clicked.connect(self.handle_forecast_lstm) 
-        
-    #     control_layout.addRow("Forecast Steps:", self.lstm_forecast_steps_spinbox)
-    #     control_layout.addRow(self.lstm_forecast_button)
-        
-    #     # Plot di bagian bawah
-    #     # self.lstm_forecast_canvas = MplCanvas(self)
-    #     # self.create_placeholder_plot(self.lstm_forecast_canvas, "Plot Hasil Prediksi LSTM")
-        
-    #     layout.addWidget(control_widget)
-    #     # layout.addWidget(self.lstm_forecast_canvas) # Plot mengisi sisa ruang
-        
-    #     group_box.setLayout(layout)
-    #     return group_box
     
     def create_fire_index_tab(self):
         fire_index_tab_widget = QWidget()
@@ -682,6 +503,7 @@ class UIMainWindow(QMainWindow):
             self.train_plot.remove()
             self.validation_plot.remove()
             self.test_plot.remove()
+            self.plot_cursor.remove()
 
             self.main_plot_canvas.axes.set_prop_cycle(None)
 
@@ -689,11 +511,29 @@ class UIMainWindow(QMainWindow):
             self.validation_plot, = self.main_plot_canvas.axes.plot(self.imputed_validation_data[variable_col].copy().index, self.imputed_validation_data[variable_col].copy(), label='Actual Val')
             self.test_plot, = self.main_plot_canvas.axes.plot(self.imputed_test_data[variable_col].copy().index, self.imputed_test_data[variable_col].copy(), label='Actual Test')
 
+            self.train_scatter = self.main_plot_canvas.axes.scatter(self.imputed_train_data[variable_col].copy().index, self.imputed_train_data[variable_col].copy())
+            self.validation_scatter = self.main_plot_canvas.axes.scatter(self.imputed_validation_data[variable_col].copy().index, self.imputed_validation_data[variable_col].copy())
+            self.test_scatter = self.main_plot_canvas.axes.scatter(self.imputed_test_data[variable_col].copy().index, self.imputed_test_data[variable_col].copy())
+
+            self.plot_cursor = mplcursors.cursor([self.train_scatter, self.validation_scatter, self.test_scatter], hover=True)
+            
+            @self.plot_cursor.connect("add")
+            def on_add(sel):
+                sel.annotation.set_text(
+                    f'{variable_col}:{sel.target[1]:.2f}\nt:{sel.target[0]:.2f}'
+                )
+                sel.annotation.get_bbox_patch().set(facecolor='lightblue', alpha=0.7)
+                sel.annotation.arrow_patch.set(arrowstyle="simple", facecolor="white", alpha=0.7)
+
+            self.main_plot_canvas.axes.set_ylabel(variable_col)
+            self.main_plot_canvas.axes.legend()
+            self.main_plot_canvas.axes.grid(True, linestyle='--', alpha=0.6)
+            self.main_plot_canvas.figure.autofmt_xdate()
+            self.main_plot_canvas.figure.tight_layout()
+            self.main_plot_canvas.draw()
+
             self.lstm_build_model_button.setEnabled(True)
             self.nan_data_line.setText("0")
-
-            self.main_plot_canvas.axes.legend()
-            self.main_plot_canvas.draw()
 
     def on_drought_index_selected(self, index):
         self.handle_optimize_drought_index_params(index)
@@ -754,25 +594,6 @@ class UIMainWindow(QMainWindow):
             for column in self.imputed_train_data:
                 self.train_data_scaled[column], self.validation_data_scaled[column], self.test_data_scaled[column], self.scaler[column] = feature_scaling(self.imputed_train_data[column].copy(), self.imputed_validation_data[column].copy(), self.imputed_test_data[column].copy())
 
-            # self.main_plot_canvas.axes.cla()
-
-            # self.main_plot_canvas.axes.set_prop_cycle(None)
-
-            # variable_col = self.variable_combobox.currentText()
-            
-            # self.train_plot, = self.main_plot_canvas.axes.plot(self.train_data[variable_col].copy().index, self.train_data_scaled[variable_col].copy(), label='Actual Train')
-            # self.validation_plot, = self.main_plot_canvas.axes.plot(self.validation_data[variable_col].copy().index, self.validation_data_scaled[variable_col].copy(), label='Actual Val')
-            # self.test_plot, = self.main_plot_canvas.axes.plot(self.test_data[variable_col].copy().index, self.test_data_scaled[variable_col].copy(), label='Actual Test')
-
-            # self.predict_plot, = self.main_plot_canvas.axes.plot([], [], label="Predict Test")
-
-            # self.main_plot_canvas.axes.set_ylabel(variable_col)
-            # self.main_plot_canvas.axes.legend()
-            # self.main_plot_canvas.axes.grid(True, linestyle='--', alpha=0.6)
-            # self.main_plot_canvas.figure.autofmt_xdate()
-            # self.main_plot_canvas.figure.tight_layout()
-
-            # self.main_plot_canvas.draw()
         else:
             self.sample_percentage_random_check.setValue(0)
             self.sample_percentage_random_check.setEnabled(False)
@@ -833,6 +654,7 @@ class UIMainWindow(QMainWindow):
             
             # Gambar plot deret waktu
             self.main_plot, = self.main_plot_canvas.axes.plot(plot_df.index, plot_df[variable_col], label='Actual Data')
+            self.main_scatter = self.main_plot_canvas.axes.scatter(plot_df.index, plot_df[variable_col], label='Actual Data', alpha=0)
             # self.imputation_plot = self.main_plot_canvas.axes.scatter([], [])
             
             # Atur properti plot agar lebih informatif
@@ -842,6 +664,16 @@ class UIMainWindow(QMainWindow):
             self.main_plot_canvas.axes.grid(True, linestyle='--', alpha=0.6)
             self.main_plot_canvas.figure.autofmt_xdate()
             self.main_plot_canvas.figure.tight_layout()
+
+            self.plot_cursor = mplcursors.cursor(self.main_scatter, hover=True)
+            
+            @self.plot_cursor.connect("add")
+            def on_add(sel):
+                sel.annotation.set_text(
+                    f'{variable_col}:{sel.target[1]:.2f}\nt:{sel.target[0]:.2f}'
+                )
+                sel.annotation.get_bbox_patch().set(facecolor='lightblue', alpha=0.7)
+                sel.annotation.arrow_patch.set(arrowstyle="simple", facecolor="white", alpha=0.7)
             
             # Segarkan kanvas untuk menampilkan plot baru
             self.main_plot_canvas.draw()
@@ -882,11 +714,25 @@ class UIMainWindow(QMainWindow):
 
         self.main_plot_canvas.axes.cla()
 
+        self.plot_cursor.remove()
+
         self.train_plot, = self.main_plot_canvas.axes.plot(self.train_data[variable_col].index, self.train_data[variable_col], label="Actual Train")
         self.validation_plot, = self.main_plot_canvas.axes.plot(self.validation_data[variable_col].index, self.validation_data[variable_col], label="Actual Val")
         self.test_plot, = self.main_plot_canvas.axes.plot(self.test_data[variable_col].index, self.test_data[variable_col], label="Actual Test")
 
-        self.predict_plot, = self.main_plot_canvas.axes.plot([], [], label="Predict Test")
+        self.train_scatter = self.main_plot_canvas.axes.scatter(self.train_data[variable_col].index, self.train_data[variable_col])
+        self.validation_scatter = self.main_plot_canvas.axes.scatter(self.validation_data[variable_col].index, self.validation_data[variable_col])
+        self.test_scatter = self.main_plot_canvas.axes.scatter(self.test_data[variable_col].index, self.test_data[variable_col])
+
+        self.plot_cursor = mplcursors.cursor([self.train_scatter, self.validation_scatter, self.test_scatter], hover=True)
+            
+        @self.plot_cursor.connect("add")
+        def on_add(sel):
+            sel.annotation.set_text(
+                f'{variable_col}:{sel.target[1]:.2f}\nt:{sel.target[0]:.2f}'
+            )
+            sel.annotation.get_bbox_patch().set(facecolor='lightblue', alpha=0.7)
+            sel.annotation.arrow_patch.set(arrowstyle="simple", facecolor="white", alpha=0.7)
 
         # self.random_check_imputed_plot = self.main_plot_canvas.axes.scatter([], [])
         # self.random_check_actual_plot = self.main_plot_canvas.axes.scatter([], [])
@@ -915,13 +761,29 @@ class UIMainWindow(QMainWindow):
             # Bersihkan plot sebelumnya
             self.main_plot_canvas.axes.cla()
 
+            self.plot_cursor.remove()
+
+            self.main_plot_canvas.axes.set_prop_cycle(None)
+
             self.main_plot_canvas.axes.set_prop_cycle(None)
             
             self.train_plot, = self.main_plot_canvas.axes.plot(train_plot_df.index, train_plot_df, label="Actual Train")
             self.validation_plot, = self.main_plot_canvas.axes.plot(validation_plot_df.index, validation_plot_df, label="Actual Val")
             self.test_plot, = self.main_plot_canvas.axes.plot(test_plot_df.index, test_plot_df, label="Actual Test")
 
-            self.predict_plot, = self.main_plot_canvas.axes.plot([], [], label="Predict Test")
+            self.train_scatter = self.main_plot_canvas.axes.scatter(train_plot_df.index, train_plot_df)
+            self.validation_scatter = self.main_plot_canvas.axes.scatter(validation_plot_df.index, validation_plot_df)
+            self.test_scatter = self.main_plot_canvas.axes.scatter(test_plot_df.index, test_plot_df)
+
+            self.plot_cursor = mplcursors.cursor([self.train_scatter, self.validation_scatter, self.test_scatter], hover=True)
+            
+            @self.plot_cursor.connect("add")
+            def on_add(sel):
+                sel.annotation.set_text(
+                    f'Drought Index:{sel.target[1]:.2f}\nt:{sel.target[0]:.2f}'
+                )
+                sel.annotation.get_bbox_patch().set(facecolor='lightblue', alpha=0.7)
+                sel.annotation.arrow_patch.set(arrowstyle="simple", facecolor="white", alpha=0.7)
 
             # self.random_check_imputed_plot = self.main_plot_canvas.axes.scatter([], [])
             # self.random_check_actual_plot = self.main_plot_canvas.axes.scatter([], [])
@@ -941,19 +803,12 @@ class UIMainWindow(QMainWindow):
             print(f"Error plotting: {e}")
 
     def handle_show_plot_imputed(self):
-        # if self.dataframe is None:
-        #     QMessageBox.warning(self, "Error", "Data has not been loaded!")
-        #     return
-
         variable_col = self.variable_combobox.currentText()
 
         try:
-            # Konversi kolom waktu ke format datetime (sangat penting untuk plot)
-            # train_plot_df = self.imputed_train_data[variable_col].copy()
-            # validation_plot_df = self.imputed_validation_data[variable_col].copy()
-            # test_plot_df = self.imputed_test_data[variable_col].copy()
-
             self.main_plot_canvas.axes.cla()
+
+            self.plot_cursor.remove()
 
             self.main_plot_canvas.axes.set_prop_cycle(None)
             
@@ -963,37 +818,24 @@ class UIMainWindow(QMainWindow):
 
             self.predict_plot, = self.main_plot_canvas.axes.plot([], [], label="Predict Test")
 
+            self.train_scatter = self.main_plot_canvas.axes.scatter(self.imputed_train_data[variable_col].copy().index, self.imputed_train_data[variable_col].copy())
+            self.validation_scatter = self.main_plot_canvas.axes.scatter(self.imputed_validation_data[variable_col].copy().index, self.imputed_validation_data[variable_col].copy())
+            self.test_scatter = self.main_plot_canvas.axes.scatter(self.imputed_test_data[variable_col].copy().index, self.imputed_test_data[variable_col].copy())
+
             self.random_check_imputed_plot = self.main_plot_canvas.axes.scatter([], [])
             self.random_check_actual_plot = self.main_plot_canvas.axes.scatter([], [])
 
+            self.plot_cursor = mplcursors.cursor([self.train_scatter, self.validation_scatter, self.test_scatter], hover=True)
+            
+            @self.plot_cursor.connect("add")
+            def on_add(sel):
+                sel.annotation.set_text(
+                    f'{variable_col}:{sel.target[1]:.2f}\nt:{sel.target[0]:.2f}'
+                )
+                sel.annotation.get_bbox_patch().set(facecolor='lightblue', alpha=0.7)
+                sel.annotation.arrow_patch.set(arrowstyle="simple", facecolor="white", alpha=0.7)
+
             # self.main_plot_canvas.axes.set_xlabel(self.train_data[variable_col].index.name)
-            self.main_plot_canvas.axes.set_ylabel(variable_col)
-            self.main_plot_canvas.axes.legend()
-            self.main_plot_canvas.axes.grid(True, linestyle='--', alpha=0.6)
-            self.main_plot_canvas.figure.autofmt_xdate()
-            self.main_plot_canvas.figure.tight_layout()
-            
-            # Segarkan kanvas untuk menampilkan plot baru
-            self.main_plot_canvas.draw()
-
-        except Exception as e:
-            QMessageBox.critical(self, "Error Plotting", f"Failed to create plot: {e}")
-            print(f"Error plotting: {e}")
-
-    def handle_show_plot_scaled(self):
-        variable_col = self.variable_combobox.currentText()
-
-        try:
-            self.main_plot_canvas.axes.cla()
-
-            self.main_plot_canvas.axes.set_prop_cycle(None)
-            
-            self.train_plot, = self.main_plot_canvas.axes.plot(self.train_data[variable_col].copy().index, self.train_data_scaled[variable_col].copy(), label='Actual Train')
-            self.validation_plot, = self.main_plot_canvas.axes.plot(self.validation_data[variable_col].copy().index, self.validation_data_scaled[variable_col].copy(), label='Actual Val')
-            self.test_plot, = self.main_plot_canvas.axes.plot(self.test_data[variable_col].copy().index, self.test_data_scaled[variable_col].copy(), label='Actual Test')
-
-            self.predict_plot, = self.main_plot_canvas.axes.plot([], [], label="Predict Test")
-
             self.main_plot_canvas.axes.set_ylabel(variable_col)
             self.main_plot_canvas.axes.legend()
             self.main_plot_canvas.axes.grid(True, linestyle='--', alpha=0.6)
@@ -1011,7 +853,16 @@ class UIMainWindow(QMainWindow):
         variable_col = self.variable_combobox.currentText()
 
         try:
+            if self.scale_button.isChecked():
+                self.lstm_mae_line.setText(f"{MAE(self.scaler[variable_col].inverse_transform(self.y_test[variable_col].copy().reshape(-1, 1)), self.scaler[variable_col].inverse_transform(self.y_predict[variable_col].copy())):.2E}")
+                self.lstm_mse_line.setText(f"{MSE(self.scaler[variable_col].inverse_transform(self.y_test[variable_col].copy().reshape(-1, 1)), self.scaler[variable_col].inverse_transform(self.y_predict[variable_col].copy())):.2E}")
+            else:
+                self.lstm_mae_line.setText(f"{MAE(self.y_test[variable_col].copy(), self.y_predict[variable_col].copy()):.2E}")
+                self.lstm_mse_line.setText(f"{MSE(self.y_test[variable_col].copy(), self.y_predict[variable_col].copy()):.2E}")
+
             self.main_plot_canvas.axes.cla()
+
+            self.plot_cursor.remove()
 
             self.main_plot_canvas.axes.set_prop_cycle(None)
             
@@ -1019,10 +870,27 @@ class UIMainWindow(QMainWindow):
             self.validation_plot, = self.main_plot_canvas.axes.plot(self.imputed_validation_data[variable_col].copy().index, self.imputed_validation_data[variable_col].copy(), label='Actual Val')
             self.test_plot, = self.main_plot_canvas.axes.plot(self.imputed_test_data[variable_col].copy().index, self.imputed_test_data[variable_col].copy(), label='Actual Test')
 
+            self.train_scatter = self.main_plot_canvas.axes.scatter(self.imputed_train_data[variable_col].copy().index, self.imputed_train_data[variable_col].copy())
+            self.validation_scatter = self.main_plot_canvas.axes.scatter(self.imputed_validation_data[variable_col].copy().index, self.imputed_validation_data[variable_col].copy())
+            self.test_scatter = self.main_plot_canvas.axes.scatter(self.imputed_test_data[variable_col].copy().index, self.imputed_test_data[variable_col].copy())
+            
             if self.scale_button.isChecked():
                 self.predict_plot, = self.main_plot_canvas.axes.plot(self.test_data[variable_col].index, self.scaler[variable_col].inverse_transform(self.y_predict[variable_col]), label="Predict Test")
+                self.predict_scatter = self.main_plot_canvas.axes.scatter(self.test_data[variable_col].index, self.scaler[variable_col].inverse_transform(self.y_predict[variable_col]))
             else:
                 self.predict_plot, = self.main_plot_canvas.axes.plot(self.test_data[variable_col].index, self.y_predict[variable_col], label="Predict Test")
+                self.predict_scatter = self.main_plot_canvas.axes.scatter(self.test_data[variable_col].index, self.y_predict[variable_col])
+
+            self.plot_cursor = mplcursors.cursor([self.train_scatter, self.validation_scatter, self.test_scatter, self.predict_scatter], hover=True)
+                
+            @self.plot_cursor.connect("add")
+            def on_add(sel):
+                sel.annotation.set_text(
+                    f'{variable_col}:{sel.target[1]:.2f}\nt:{sel.target[0]:.2f}'
+                )
+                sel.annotation.get_bbox_patch().set(facecolor='lightblue', alpha=0.7)
+                sel.annotation.arrow_patch.set(arrowstyle="simple", facecolor="white", alpha=0.7)
+            
 
             self.main_plot_canvas.axes.set_ylabel(variable_col)
             self.main_plot_canvas.axes.legend()
@@ -1097,19 +965,43 @@ class UIMainWindow(QMainWindow):
         else:
             self.lstm_mae_line.setText(f"{MAE(self.y_test[variable_col].copy(), self.y_predict[variable_col].copy()):.2E}")
             self.lstm_mse_line.setText(f"{MSE(self.y_test[variable_col].copy(), self.y_predict[variable_col].copy()):.2E}")
+        
+        self.main_plot_canvas.axes.cla()
 
-        # print(variable_col)
+        self.plot_cursor.remove()
 
-        # print(self.y_predict[variable_col])
+        self.main_plot_canvas.axes.set_prop_cycle(None)
+        
+        self.train_plot, = self.main_plot_canvas.axes.plot(self.imputed_train_data[variable_col].copy().index, self.imputed_train_data[variable_col].copy(), label='Actual Train')
+        self.validation_plot, = self.main_plot_canvas.axes.plot(self.imputed_validation_data[variable_col].copy().index, self.imputed_validation_data[variable_col].copy(), label='Actual Val')
+        self.test_plot, = self.main_plot_canvas.axes.plot(self.imputed_test_data[variable_col].copy().index, self.imputed_test_data[variable_col].copy(), label='Actual Test')
 
-        self.predict_plot.remove()
-
+        self.train_scatter = self.main_plot_canvas.axes.scatter(self.imputed_train_data[variable_col].copy().index, self.imputed_train_data[variable_col].copy())
+        self.validation_scatter = self.main_plot_canvas.axes.scatter(self.imputed_validation_data[variable_col].copy().index, self.imputed_validation_data[variable_col].copy())
+        self.test_scatter = self.main_plot_canvas.axes.scatter(self.imputed_test_data[variable_col].copy().index, self.imputed_test_data[variable_col].copy())
+        
         if self.scale_button.isChecked():
             self.predict_plot, = self.main_plot_canvas.axes.plot(self.test_data[variable_col].index, self.scaler[variable_col].inverse_transform(self.y_predict[variable_col]), label="Predict Test")
+            self.predict_scatter = self.main_plot_canvas.axes.scatter(self.test_data[variable_col].index, self.scaler[variable_col].inverse_transform(self.y_predict[variable_col]))
         else:
             self.predict_plot, = self.main_plot_canvas.axes.plot(self.test_data[variable_col].index, self.y_predict[variable_col], label="Predict Test")
+            self.predict_scatter = self.main_plot_canvas.axes.scatter(self.test_data[variable_col].index, self.y_predict[variable_col])
 
+        self.plot_cursor = mplcursors.cursor([self.train_scatter, self.validation_scatter, self.test_scatter, self.predict_scatter], hover=True)
+            
+        @self.plot_cursor.connect("add")
+        def on_add(sel):
+            sel.annotation.set_text(
+                f'{variable_col}:{sel.target[1]:.2f}\nt:{sel.target[0]:.2f}'
+            )
+            sel.annotation.get_bbox_patch().set(facecolor='lightblue', alpha=0.7)
+            sel.annotation.arrow_patch.set(arrowstyle="simple", facecolor="white", alpha=0.7)
+            
+        self.main_plot_canvas.axes.set_ylabel(variable_col)
         self.main_plot_canvas.axes.legend()
+        self.main_plot_canvas.axes.grid(True, linestyle='--', alpha=0.6)
+        self.main_plot_canvas.figure.autofmt_xdate()
+        self.main_plot_canvas.figure.tight_layout()
         self.main_plot_canvas.draw()  
 
         self.drought_index_combo.setEnabled(True)
@@ -1134,39 +1026,127 @@ class UIMainWindow(QMainWindow):
 
             features.append(feature_past)
         
-        if index == 3:
-            drought_index_values, self.params = fire_predict(Temp=features[0], WT=features[1], SM=features[2], Rf=features[3])
-        else:
+        if index == 0:
             Rf_b = np.roll(features[3], 1)
             Rf_b[0] = np.nan
 
-            drought_index_values = calculate_kdbi(Temp=features[0], SM=features[2], Rf=features[3], Rf_b=Rf_b, R0=3000, dt=1)
+            self.drought_index_values = calculate_kdbi(Temp=features[0], SM=features[2], Rf=features[3], Rf_b=Rf_b, R0=3000, dt=1)
+            self.drought_index_values = np.clip(self.drought_index_values, 0, 203)
+
+            self.main_plot_canvas.axes.cla()
+
+            self.main_plot_canvas.axes.set_prop_cycle(None)
+
+            self.drought_index_plot, = self.main_plot_canvas.axes.plot(self.dataframe.index, self.drought_index_values[self.dataframe.index], label='KDBI')
+            self.drought_index_scatter = self.main_plot_canvas.axes.scatter(self.dataframe.index, self.drought_index_values[self.dataframe.index])
+
+            self.drought_index_predicted_plot = self.main_plot_canvas.axes.plot([], [])
+
+            self.main_plot_canvas.axes.set_ylabel("KDBI")
+            self.main_plot_canvas.axes.legend()
+            self.main_plot_canvas.axes.set_ylim([-5, 208])
+            self.main_plot_canvas.axes.grid(True, linestyle='--', alpha=0.6)
+            self.main_plot_canvas.figure.autofmt_xdate()
+            self.main_plot_canvas.figure.tight_layout()
         
-        self.main_plot_canvas.axes.cla()
+        elif index == 1:
+            Rf_b = np.roll(features[3], 1)
+            Rf_b[0] = np.nan
 
-        self.main_plot_canvas.axes.set_prop_cycle(None)
+            self.drought_index_values = calculate_kdbi_adj(Temp=features[0], SM=features[2], Rf=features[3], Rf_b=Rf_b, R0=3000, dt=1)
+            self.drought_index_values = np.clip(self.drought_index_values, 0, 203)
 
-        self.drought_index_plot, = self.main_plot_canvas.axes.plot(self.dataframe.index, drought_index_values[self.dataframe.index], label='Drought Index')
+            self.main_plot_canvas.axes.cla()
 
-        self.drought_index_predicted_plot = self.main_plot_canvas.axes.plot([], [])
+            self.main_plot_canvas.axes.set_prop_cycle(None)
 
-        # predicted_index = [self.imputed_test_data[column].copy().index[-1] + 1 + i for i in range(self.forecast_steps_spinbox.value())]
-        # self.drought_index_plot = self.main_plot_canvas.axes.plot(predicted_index, drought_index_values[predicted_index], label="drought_index Predicted")
+            self.drought_index_plot, = self.main_plot_canvas.axes.plot(self.dataframe.index, self.drought_index_values[self.dataframe.index], label='KDBI(adj)')
+            self.drought_index_scatter = self.main_plot_canvas.axes.scatter(self.dataframe.index, self.drought_index_values[self.dataframe.index])
 
-        self.main_plot_canvas.axes.set_ylabel("Drought Index")
-        self.main_plot_canvas.axes.legend()
-        self.main_plot_canvas.axes.set_ylim([-5, 305])
-        self.main_plot_canvas.axes.grid(True, linestyle='--', alpha=0.6)
-        self.main_plot_canvas.figure.autofmt_xdate()
-        self.main_plot_canvas.figure.tight_layout()
+            self.drought_index_predicted_plot = self.main_plot_canvas.axes.plot([], [])
+
+            self.main_plot_canvas.axes.set_ylabel("KDBI(adj)")
+            self.main_plot_canvas.axes.legend()
+            self.main_plot_canvas.axes.set_ylim([-5, 208])
+            self.main_plot_canvas.axes.grid(True, linestyle='--', alpha=0.6)
+            self.main_plot_canvas.figure.autofmt_xdate()
+            self.main_plot_canvas.figure.tight_layout()
         
-        # Segarkan kanvas untuk menampilkan plot baru
+        elif index == 2:
+            Rf_b = np.roll(features[3], 1)
+            Rf_b[0] = np.nan
+
+            self.drought_index_values, self.params = fire_predict(Temp=features[0], WT=features[1], SM=features[2], Rf=features[3], drought_index="MKDBI")
+        
+            self.main_plot_canvas.axes.cla()
+
+            self.main_plot_canvas.axes.set_prop_cycle(None)
+
+            self.drought_index_plot, = self.main_plot_canvas.axes.plot(self.dataframe.index, self.drought_index_values[self.dataframe.index], label='MKDBI')
+            self.drought_index_scatter = self.main_plot_canvas.axes.scatter(self.dataframe.index, self.drought_index_values[self.dataframe.index])
+
+            self.drought_index_predicted_plot = self.main_plot_canvas.axes.plot([], [])
+
+            self.main_plot_canvas.axes.set_ylabel("MKDBI")
+            self.main_plot_canvas.axes.legend()
+            self.main_plot_canvas.axes.set_ylim([-5, 208])
+            self.main_plot_canvas.axes.grid(True, linestyle='--', alpha=0.6)
+            self.main_plot_canvas.figure.autofmt_xdate()
+            self.main_plot_canvas.figure.tight_layout()
+        
+        else:
+            self.drought_index_values, self.params = fire_predict(Temp=features[0], WT=features[1], SM=features[2], Rf=features[3])
+
+            self.main_plot_canvas.axes.cla()
+
+            self.main_plot_canvas.axes.set_prop_cycle(None)
+
+            self.drought_index_plot, = self.main_plot_canvas.axes.plot(self.dataframe.index, self.drought_index_values[self.dataframe.index], label='PFVI')
+            self.drought_index_scatter = self.main_plot_canvas.axes.scatter(self.dataframe.index, self.drought_index_values[self.dataframe.index])
+
+            self.drought_index_predicted_plot = self.main_plot_canvas.axes.plot([], [])
+
+            self.main_plot_canvas.axes.set_ylabel("PFVI")
+            self.main_plot_canvas.axes.legend()
+            self.main_plot_canvas.axes.set_ylim([-5, 305])
+            self.main_plot_canvas.axes.grid(True, linestyle='--', alpha=0.6)
+            self.main_plot_canvas.figure.autofmt_xdate()
+            self.main_plot_canvas.figure.tight_layout()
+        
+        self.plot_cursor.remove()
+
+        self.plot_cursor = mplcursors.cursor(self.drought_index_scatter, hover=True)
+
+        if index == 3:
+            @self.plot_cursor.connect("add")
+            def on_add(sel):
+                sel.annotation.set_text(
+                    f'Drought Index:{sel.target[1]:.2f}\nt:{sel.target[0]:.2f}\nFire Danger:{fire_danger(sel.target[1], "PFVI")}'
+                )
+                
+        else:    
+            @self.plot_cursor.connect("add")
+            def on_add(sel):
+                sel.annotation.set_text(
+                    f'Drought Index:{sel.target[1]:.2f}\nt:{sel.target[0]:.2f}\nFire Danger:{fire_danger(sel.target[1], "KDBI")}'
+                )
+
         self.main_plot_canvas.draw()
+    
+        self.forecast_button.setEnabled(True)
     
     def handle_predict_drought_index(self):
         features = []
 
         for column in self.dataframe.columns:
+            feature_past = np.concatenate([
+                self.imputed_train_data[column].values, 
+                self.imputed_validation_data[column].values, 
+                self.imputed_test_data[column].values
+            ]) 
+
+            feature_past = pd.Series(feature_past.reshape(-1))
+
             last_known_sequence = self.X_test[column][-1]
 
             future_forecast = forecast_lstm(
@@ -1179,38 +1159,136 @@ class UIMainWindow(QMainWindow):
                 feature_future = self.scaler[column].inverse_transform(future_forecast)
                 feature_future = pd.Series(feature_future.reshape(-1))
 
-                features.append(feature_future)
+                feature = pd.concat([feature_past, feature_future], ignore_index=True)
+
+                features.append(feature)
             else:
                 feature_future = pd.Series(future_forecast.reshape(-1))
+                
+                feature = pd.concat([feature_past, feature_future], ignore_index=True)
 
-                features.append(feature_future)
+                features.append(feature)
         
+        if self.drought_index_combo.currentIndex() == 0:
+            Rf_b = np.roll(features[3], 1)
+            Rf_b[0] = np.nan
+
+            drought_index_values = calculate_kdbi(Temp=features[0], SM=features[2], Rf=features[3], Rf_b=Rf_b, R0=3000, dt=1)
+            drought_index_values = np.clip(drought_index_values, 0, 203)
+
+            self.main_plot_canvas.axes.cla()
+        
+            self.main_plot_canvas.axes.set_prop_cycle(None)
+
+            self.drought_index_plot, = self.main_plot_canvas.axes.plot(self.dataframe.index, self.drought_index_values[self.dataframe.index], label='KDBI')
+            self.drought_index_scatter = self.main_plot_canvas.axes.scatter(self.dataframe.index, self.drought_index_values[self.dataframe.index])
+
+            last_index = self.dataframe.index[-1]
+            predicted_index = [t for t in range(last_index+1, last_index+1+self.forecast_steps_spinbox.value())]
+            self.drought_index_predicted_plot, = self.main_plot_canvas.axes.plot(predicted_index, drought_index_values[predicted_index], label="KDBI Predicted")
+            self.drought_index_predicted_scatter = self.main_plot_canvas.axes.scatter(predicted_index, drought_index_values[predicted_index])
+
+            self.main_plot_canvas.axes.set_ylabel("KDBI")
+            self.main_plot_canvas.axes.legend()
+            self.main_plot_canvas.axes.set_ylim([-5, 208])
+            self.main_plot_canvas.axes.grid(True, linestyle='--', alpha=0.6)
+            self.main_plot_canvas.figure.autofmt_xdate()
+            self.main_plot_canvas.figure.tight_layout()
+        
+        elif self.drought_index_combo.currentIndex() == 1:
+            Rf_b = np.roll(features[3], 1)
+            Rf_b[0] = np.nan
+
+            drought_index_values = calculate_kdbi_adj(Temp=features[0], SM=features[2], Rf=features[3], Rf_b=Rf_b, R0=3000, dt=1)
+            drought_index_values = np.clip(drought_index_values, 0, 203)
+
+            self.main_plot_canvas.axes.cla()
+
+            self.main_plot_canvas.axes.set_prop_cycle(None)
+
+            self.drought_index_plot, = self.main_plot_canvas.axes.plot(self.dataframe.index, self.drought_index_values[self.dataframe.index], label='KDBI(adj)')
+            self.drought_index_scatter = self.main_plot_canvas.axes.scatter(self.dataframe.index, self.drought_index_values[self.dataframe.index])
+
+            last_index = self.dataframe.index[-1]
+            predicted_index = [t for t in range(last_index+1, last_index+1+self.forecast_steps_spinbox.value())]
+            self.drought_index_predicted_plot, = self.main_plot_canvas.axes.plot(predicted_index, drought_index_values[predicted_index], label="KDBI(adj) Predicted")
+            self.drought_index_predicted_scatter = self.main_plot_canvas.axes.scatter(predicted_index, drought_index_values[predicted_index])
+
+            self.main_plot_canvas.axes.set_ylabel("KDBI(adj)")
+            self.main_plot_canvas.axes.legend()
+            self.main_plot_canvas.axes.set_ylim([-5, 208])
+            self.main_plot_canvas.axes.grid(True, linestyle='--', alpha=0.6)
+            self.main_plot_canvas.figure.autofmt_xdate()
+            self.main_plot_canvas.figure.tight_layout()
+        
+        elif self.drought_index_combo.currentIndex() == 2:
+            Rf_b = np.roll(features[3], 1)
+            Rf_b[0] = np.nan
+
+            drought_index_values = calculate_mkdbi(self.params, Temp=features[0], WT=features[1], SM=features[2], Rf=features[3], Rf_b=Rf_b, R0=3000, dt=1)
+            drought_index_values = np.clip(drought_index_values, 0, 203)
+
+            self.main_plot_canvas.axes.cla()
+
+            self.main_plot_canvas.axes.set_prop_cycle(None)
+
+            self.drought_index_plot, = self.main_plot_canvas.axes.plot(self.dataframe.index, self.drought_index_values[self.dataframe.index], label='mKDBI')
+            self.drought_index_scatter = self.main_plot_canvas.axes.scatter(self.dataframe.index, self.drought_index_values[self.dataframe.index])
+
+            last_index = self.dataframe.index[-1]
+            predicted_index = [t for t in range(last_index+1, last_index+1+self.forecast_steps_spinbox.value())]
+            self.drought_index_predicted_plot, = self.main_plot_canvas.axes.plot(predicted_index, drought_index_values[predicted_index], label="mKDBI Predicted")
+            self.drought_index_predicted_scatter = self.main_plot_canvas.axes.scatter(predicted_index, drought_index_values[predicted_index])
+
+            self.main_plot_canvas.axes.set_ylabel("mKDBI")
+            self.main_plot_canvas.axes.legend()
+            self.main_plot_canvas.axes.set_ylim([-5, 208])
+            self.main_plot_canvas.axes.grid(True, linestyle='--', alpha=0.6)
+            self.main_plot_canvas.figure.autofmt_xdate()
+            self.main_plot_canvas.figure.tight_layout()
+            
+        else:
+            Rf_b = np.roll(features[3], 1)
+            Rf_b[0] = np.nan
+
+            drought_index_values = calculate_pfvi(params=self.params, Temp=features[0], WT=features[1], SM=features[2], Rf=features[3], Rf_b=Rf_b, R0=3000, dt=1)
+            drought_index_values = np.clip(drought_index_values, 0, 300)
+
+            self.main_plot_canvas.axes.cla()
+
+            self.main_plot_canvas.axes.set_prop_cycle(None)
+
+            self.drought_index_plot, = self.main_plot_canvas.axes.plot(self.dataframe.index, self.drought_index_values[self.dataframe.index], label='PFVI')
+            self.drought_index_scatter = self.main_plot_canvas.axes.scatter(self.dataframe.index, self.drought_index_values[self.dataframe.index])
+
+            last_index = self.dataframe.index[-1]
+            predicted_index = [t for t in range(last_index+1, last_index+1+self.forecast_steps_spinbox.value())]
+            self.drought_index_predicted_plot, = self.main_plot_canvas.axes.plot(predicted_index, drought_index_values[predicted_index], label="PFVI Predicted")
+            self.drought_index_predicted_scatter = self.main_plot_canvas.axes.scatter(predicted_index, drought_index_values[predicted_index])
+
+            self.main_plot_canvas.axes.set_ylabel("PFVI")
+            self.main_plot_canvas.axes.legend()
+            self.main_plot_canvas.axes.set_ylim([-5, 305])
+            self.main_plot_canvas.axes.grid(True, linestyle='--', alpha=0.6)
+            self.main_plot_canvas.figure.autofmt_xdate()
+            self.main_plot_canvas.figure.tight_layout()
+
+        self.plot_cursor.remove()
+
+        self.plot_cursor = mplcursors.cursor([self.drought_index_scatter, self.drought_index_predicted_scatter], hover=True)
+
         if self.drought_index_combo.currentIndex() == 3:
-            Rf_b = np.roll(features[3], 1)
-            Rf_b[0] = np.nan
-
-            pfvi_values = calculate_pfvi(params=self.params, Temp=features[0], WT=features[1], SM=features[2], Rf=features[3], Rf_b=Rf_b, R0=3000, dt=1)
-        elif self.drought_index_combo.currentIndex() == 0:
-            Rf_b = np.roll(features[3], 1)
-            Rf_b[0] = np.nan
-
-            pfvi_values = calculate_kdbi(params=self.params, Temp=features[0], WT=features[1], SM=features[2], Rf=features[3], Rf_b=Rf_b, R0=3000, dt=1)
-
-        self.main_plot_canvas.axes.cla()
-
-        self.main_plot_canvas.axes.set_prop_cycle(None)
-
-        self.pfvi_plot, = self.main_plot_canvas.axes.plot(self.dataframe.index, pfvi_values[self.dataframe.index], label='PFVI')
-
-        predicted_index = [self.dataframe.index[-1] + 1 + i for i in range(self.forecast_steps_spinbox.value())]
-        self.pfvi_plot = self.main_plot_canvas.axes.plot(predicted_index, pfvi_values[predicted_index], label="PFVI Predicted")
-
-        self.main_plot_canvas.axes.set_ylabel("PFVI")
-        self.main_plot_canvas.axes.legend()
-        self.main_plot_canvas.axes.set_ylim([-5, 305])
-        self.main_plot_canvas.axes.grid(True, linestyle='--', alpha=0.6)
-        self.main_plot_canvas.figure.autofmt_xdate()
-        self.main_plot_canvas.figure.tight_layout()
-        
-        # Segarkan kanvas untuk menampilkan plot baru
+            @self.plot_cursor.connect("add")
+            def on_add(sel):
+                sel.annotation.set_text(
+                    f'Drought Index:{sel.target[1]:.2f}\nt:{sel.target[0]:.2f}\nFire Danger:{fire_danger(sel.target[1], "PFVI")}'
+                )
+                
+        else:    
+            @self.plot_cursor.connect("add")
+            def on_add(sel):
+                sel.annotation.set_text(
+                    f'Drought Index:{sel.target[1]:.2f}\nt:{sel.target[0]:.2f}\nFire Danger:{fire_danger(sel.target[1], "KDBI")}'
+                )
+                    
         self.main_plot_canvas.draw()

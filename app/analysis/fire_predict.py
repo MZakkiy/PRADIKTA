@@ -37,10 +37,15 @@ def wtf_factor(aH, bH, n, h, alpha):
     theta = (1 + (h / alpha)**n)**(-m)
     return aH -  bH * ((1 - theta) * 300)
 
-def di_obs(sm, fc, sat):
+def di_obs_pfvi(sm, fc, sat):
     """Calculates the Observed Drought Index (DIobs) from Soil Moisture."""
     if (sat - fc) == 0: return 0
     return 300 * (1 - ((sm - fc) / (sat - fc)))
+
+def di_obs_mkdbi(sm, fc, sat):
+    """Calculates the Observed Drought Index (DIobs) from Soil Moisture."""
+    if (sat - fc) == 0: return 0
+    return 203 * (1 - ((sm - fc) / (sat - fc)))
 
 # Main Simulation and Optimization Functions
 
@@ -54,7 +59,7 @@ def calculate_pfvi(params, WT, SM, Rf, Rf_b, Temp, R0, dt):
     
     x = np.zeros(time_steps + 1)
     # Initialize PFVI with the first observed value
-    x[0] = di_obs(SM[0], 40, 70) 
+    x[0] = di_obs_pfvi(SM[0], 40, 70) 
 
     for i in range(time_steps):
         x0 = np.clip(x[i], 0, 300) # Ensure PFVI is within bounds [0, 300]
@@ -65,56 +70,88 @@ def calculate_pfvi(params, WT, SM, Rf, Rf_b, Temp, R0, dt):
         
         x[i+1] = x0 + df - rf - wtf
         
-    return x[1:] # Return the calculated PFVI series
+    return x[1:]
 
 def calculate_kdbi(SM, Rf, Rf_b, Temp, R0, dt):
     time_steps = len(SM)
     
     x = np.zeros(time_steps + 1)
-    # Initialize PFVI with the first observed value
-    x[0] = di_obs(SM[0], 40, 70) 
+    
+    x[0] = di_obs_mkdbi(SM[0], 40, 70) 
 
     for i in range(time_steps):
-        x0 = np.clip(x[i], 0, 300) # Ensure PFVI is within bounds [0, 300]
+        x0 = np.clip(x[i], 0, 203) 
         
         df = df_factor_kdbi(x0, Temp[i], R0) * dt
         rf = rf_factor(Rf[i], Rf_b[i])
-    
+
         x[i+1] = x0 + df - rf 
         
-    return x[1:] # Return the calculated PFVI series
+    return x[1:] 
 
 def calculate_kdbi_adj(SM, Rf, Rf_b, Temp, R0, dt):
     time_steps = len(SM)
     
     x = np.zeros(time_steps + 1)
-    # Initialize PFVI with the first observed value
-    x[0] = di_obs(SM[0], 40, 70) 
+    
+    x[0] = di_obs_mkdbi(SM[0], 40, 70) 
 
     for i in range(time_steps):
-        x0 = np.clip(x[i], 0, 300) # Ensure PFVI is within bounds [0, 300]
+        x0 = np.clip(x[i], 0, 203) 
         
-        df = df_factor_kdbi(x0, Temp[i], R0) * dt
+        df = df_factor_kdbi_adj(x0, Temp[i], R0) * dt
         rf = rf_factor(Rf[i], Rf_b[i])
     
         x[i+1] = x0 + df - rf 
         
-    return x[1:] # Return the calculated PFVI series
+    return x[1:] 
+    
+def calculate_mkdbi(params, WT, SM, Rf, Rf_b, Temp, R0, dt):
+    aH, bH, n, alpha = params
+    time_steps = len(SM)
 
-def objective_function(params, WT, SM, Rf, Rf_b, Temp, R0, dt):
+    h = np.where(WT > 0, 0, -WT)
+    
+    x = np.zeros(time_steps + 1)
+    
+    x[0] = di_obs_mkdbi(SM[0], 40, 70) 
+
+    for i in range(time_steps):
+        x0 = np.clip(x[i], 0, 203) 
+        
+        df = df_factor_kdbi_adj(x0, Temp[i], R0) * dt
+        rf = rf_factor(Rf[i], Rf_b[i])
+        wtf = wtf_factor(aH, bH, n, h[i], alpha)
+        
+        x[i+1] = x0 + df - rf - wtf
+        
+    return x[1:] 
+
+def objective_function_pfvi(params, WT, SM, Rf, Rf_b, Temp, R0, dt):
     """Objective function to be minimized. Calculates Mean Squared Error (MSE)."""
     # Run the model with the trial parameters
     predicted_pfvi = calculate_pfvi(params, WT, SM, Rf, Rf_b, Temp, R0, dt)
     
     # Calculate the "ground truth" DIobs
-    observed_di = np.array([di_obs(sm, 40, 70) for sm in SM])
+    observed_di = np.array([di_obs_pfvi(sm, 40, 70) for sm in SM])
     
     # Return the Mean Squared Error
     return np.mean((predicted_pfvi - observed_di)**2)
 
+def objective_function_mkdbi(params, WT, SM, Rf, Rf_b, Temp, R0, dt):
+    """Objective function to be minimized. Calculates Mean Squared Error (MSE)."""
+    # Run the model with the trial parameters
+    predicted_mkdbi = calculate_mkdbi(params, WT, SM, Rf, Rf_b, Temp, R0, dt)
+    
+    # Calculate the "ground truth" DIobs
+    observed_di = np.array([di_obs_mkdbi(sm, 40, 70) for sm in SM])
+    
+    # Return the Mean Squared Error
+    return np.mean((predicted_mkdbi - observed_di)**2)
+
 # Main User-Facing Function
 
-def fire_predict(WT, SM, Rf, Temp, R0=3000, dt=1, optim_method="Nelder-Mead"):
+def fire_predict(WT, SM, Rf, Temp, R0=3000, dt=1, optim_method="Nelder-Mead", drought_index="PFVI"):
     """
     Calibrates and calculates the Peat Fire Vulnerability Index (PFVI).
 
@@ -129,18 +166,17 @@ def fire_predict(WT, SM, Rf, Temp, R0=3000, dt=1, optim_method="Nelder-Mead"):
     Returns:
         np.array: The final, calibrated PFVI time series.
     """
-    # --- Data Preparation ---
+    if drought_index == "PFVI":
+        objective_function = objective_function_pfvi
+
+    else:
+        objective_function = objective_function_mkdbi
     WT, SM, Rf, Temp = np.array(WT), np.array(SM), np.array(Rf), np.array(Temp)
     
     # Create the "rainfall before" series by shifting the rainfall data
     Rf_b = np.roll(Rf, 1)
     Rf_b[0] = np.nan 
 
-    # --- Optimization ---
-    # The R code uses a brute-force grid search to find a good starting point.
-    # We will replicate this to avoid getting stuck in a poor local minimum.
-    # print("Starting optimization... This may take a moment.")
-    
     min_error = float('inf')
     best_params = None
     
@@ -172,31 +208,38 @@ def fire_predict(WT, SM, Rf, Temp, R0=3000, dt=1, optim_method="Nelder-Mead"):
     # print("\nOptimization complete.")
     # print(f"Final optimized parameters (aH, bH, n, alpha): {[f'{p:.4f}' for p in best_params]}")
 
-    # --- Final Calculation ---
     # Calculate the final PFVI series using the best parameters found
-    final_pfvi = calculate_pfvi(best_params, WT, SM, Rf, Rf_b, Temp, R0, dt)
+    if drought_index == "PFVI":
+        final_drought_index = calculate_pfvi(best_params, WT, SM, Rf, Rf_b, Temp, R0, dt)
+        final_drought_index_clipped = np.clip(final_drought_index, 0, 300)
+    else:
+        final_drought_index = calculate_mkdbi(best_params, WT, SM, Rf, Rf_b, Temp, R0, dt)
+        final_drought_index_clipped = np.clip(final_drought_index, 0, 203)
     
-    # Clip the final values to be within the [0, 300] range
-    final_pfvi_clipped = np.clip(final_pfvi, 0, 300)
-    
-    return final_pfvi_clipped, best_params
+    return final_drought_index_clipped, best_params
 
+def pfvi_fire_danger(pfvi_value):
+    if pfvi_value >= 226:
+        return "Extreme"
+    elif pfvi_value >= 151:
+        return "High"
+    elif pfvi_value >= 76:
+        return "Moderate"
+    else:
+        return "Low"
 
-if __name__ == '__main__':
-    # =========================================================================
-    # Example Usage with sample data
-    # =========================================================================
-    # Create some synthetic time-series data for demonstration
-    days = 12
-    np.random.seed(42)
-    WT_data = -0.5 - np.sin(np.linspace(0, 4 * np.pi, days)) * 0.5 + np.random.normal(0, 0.05, days)
-    SM_data = 55 + np.sin(np.linspace(0, 4 * np.pi, days)) * 14 + np.random.normal(0, 1, days)
-    Rf_data = np.random.exponential(3, days)
-    Rf_data[20:25] = 15 # A heavy rain event
-    Temp_data = 28 + np.random.uniform(-2, 2, days)
+def kdbi_fire_danger(kdbi_value):
+    if kdbi_value >= 175:
+        return "Extreme"
+    elif kdbi_value >= 151:
+        return "High"
+    elif kdbi_value >= 101:
+        return "Moderate"
+    else:
+        return "Low"
 
-    # Run the prediction
-    predicted_values = fire_predict(WT=WT_data, SM=SM_data, Rf=Rf_data, Temp=Temp_data)
-    
-    print("\n--- Final PFVI Output ---")
-    print(predicted_values)
+def fire_danger(drought_index_value, drought_index="PFVI"):
+    if drought_index == "PFVI":
+        return pfvi_fire_danger(drought_index_value)
+    else:
+        return kdbi_fire_danger(drought_index_value)
