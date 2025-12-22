@@ -22,7 +22,7 @@ from analysis.data_processor import (
     MAE, MSE, data_separation, feature_scaling
 )
 
-from analysis.lstm import (
+from analysis.model import (
     create_sliding_window, build_lstm_model, forecast_lstm
 )
 
@@ -195,7 +195,7 @@ class UIMainWindow(QMainWindow):
         # --- Kolom 3: Data Imputation ---
         self.imputation_method = QComboBox()
         self.imputation_method.setPlaceholderText("Choose Method")
-        self.imputation_method.addItems(['Forward', 'Backward', 'Linear', 'Nearest', 'Akima', 'Pchip'])
+        self.imputation_method.addItems(['Forward', 'Backward', 'Linear', 'Akima', 'Pchip'])
         self.imputation_method.currentIndexChanged.connect(self.on_method_selected)
         self.imputation_method.setEnabled(False)
 
@@ -226,15 +226,15 @@ class UIMainWindow(QMainWindow):
         self.mae_random_check.setReadOnly(True)
         imputation_layout.addWidget(self.mae_random_check, 3, 3)
         
-        imputation_layout.addWidget(QLabel("Var Before"), 4, 0)
-        self.var_before_random_check = QLineEdit("0")
-        self.var_before_random_check.setReadOnly(True)
-        imputation_layout.addWidget(self.var_before_random_check, 4, 1)
+        # imputation_layout.addWidget(QLabel("Var Before"), 4, 0)
+        # self.var_before_random_check = QLineEdit("0")
+        # self.var_before_random_check.setReadOnly(True)
+        # imputation_layout.addWidget(self.var_before_random_check, 4, 1)
 
-        imputation_layout.addWidget(QLabel("Var After"), 4, 2)
-        self.var_after_random_check = QLineEdit("0")
-        self.var_after_random_check.setReadOnly(True)
-        imputation_layout.addWidget(self.var_after_random_check, 4, 3)
+        # imputation_layout.addWidget(QLabel("Var After"), 4, 2)
+        # self.var_after_random_check = QLineEdit("0")
+        # self.var_after_random_check.setReadOnly(True)
+        # imputation_layout.addWidget(self.var_after_random_check, 4, 3)
 
         imputation_group.setLayout(imputation_layout)
         
@@ -283,6 +283,7 @@ class UIMainWindow(QMainWindow):
         
         self.lstm_window_size_spinbox = QSpinBox()
         self.lstm_window_size_spinbox.setMinimum(1)
+        self.lstm_window_size_spinbox.setMaximum(1000)
         # self.lstm_window_size_spinbox.setRange(1, 5)
         self.lstm_window_size_spinbox.setValue(1)
         
@@ -293,6 +294,7 @@ class UIMainWindow(QMainWindow):
         
         self.lstm_units_spinbox = QSpinBox()
         self.lstm_units_spinbox.setMinimum(1)
+        self.lstm_units_spinbox.setMaximum(1000)
         self.lstm_units_spinbox.setValue(32)
 
         self.lstm_dropout_spinbox = QDoubleSpinBox()
@@ -332,7 +334,7 @@ class UIMainWindow(QMainWindow):
         self.lstm_epochs_spinbox.setValue(100)
 
         self.lstm_batch_spinbox = QSpinBox()
-        self.lstm_batch_spinbox.setRange(8, 128)
+        self.lstm_batch_spinbox.setMinimum(1)
         self.lstm_batch_spinbox.setValue(32)
 
         self.lstm_optimizer_combo = QComboBox()
@@ -556,8 +558,6 @@ class UIMainWindow(QMainWindow):
 
             self.mse_random_check.setText(f"{MSE(actual, predicted):.2E}")
             self.mae_random_check.setText(f"{MAE(actual, predicted):.2E}")
-            self.var_before_random_check.setText(f"{self.dataframe[variable_col].var():.2E}")
-            self.var_after_random_check.setText(f"{random_check_dataframe.var():.2E}")
 
             self.random_check_imputed_plot.remove()
             self.random_check_actual_plot.remove()
@@ -570,8 +570,6 @@ class UIMainWindow(QMainWindow):
         else:
             self.mse_random_check.setText("0")
             self.mae_random_check.setText("0")
-            self.var_before_random_check.setText("0")
-            self.var_after_random_check.setText("0")
 
             self.random_check_imputed_plot.remove()
             self.random_check_actual_plot.remove()
@@ -582,7 +580,6 @@ class UIMainWindow(QMainWindow):
             self.main_plot_canvas.axes.legend()
             self.main_plot_canvas.draw()
     
-    # Belum jadi
     def on_scaler_button_state_changed(self, state):
         if state == 2:
             self.train_data_scaled = {}
@@ -606,14 +603,15 @@ class UIMainWindow(QMainWindow):
 
         if error_message:
             QMessageBox.critical(self, "Error", error_message)
-            self.dataframe = None
-            self.variable_combobox.clear()
-            self.summary_button.setEnabled(False)
-            self.show_separation.setEnabled(False)
-            self.imputation_method.setEnabled(False)
-            self.main_plot_canvas.axes.cla()
+            # self.dataframe = None
+            # self.variable_combobox.clear()
+            # self.summary_button.setEnabled(False)
+            # self.show_separation.setEnabled(False)
+            # self.imputation_method.setEnabled(False)
+            # self.main_plot_canvas.axes.cla()
 
         else:
+            self.reset_ui()
             self.dataframe = df
             QMessageBox.information(self, "Success", f"Data successfully loaded with {len(self.dataframe)} rows.")
 
@@ -1292,3 +1290,87 @@ class UIMainWindow(QMainWindow):
                 )
                     
         self.main_plot_canvas.draw()
+
+    def reset_ui(self):
+        """Reset UI to initial state and clear all data variables"""
+        # Clear dataframes and data storage
+        self.dataframe = None
+        self.train_data = {}
+        self.validation_data = {}
+        self.test_data = {}
+        self.imputed_train_data = {}
+        self.imputed_validation_data = {}
+        self.imputed_test_data = {}
+        self.train_data_scaled = {}
+        self.validation_data_scaled = {}
+        self.test_data_scaled = {}
+        self.scaler = {}
+        self.na_marker_train = {}
+        self.na_marker_validation = {}
+        self.na_marker_test = {}
+        
+        # Clear model related variables
+        self.lstm_model = None
+        self.history = None
+        self.predictions_lstm = None
+        self.test_predictions = None
+        self.drought_index_values = None
+        self.params = {}
+        
+        # Clear plot references
+        self.train_plot = None
+        self.validation_plot = None
+        self.test_plot = None
+        self.train_scatter = None
+        self.validation_scatter = None
+        self.test_scatter = None
+        self.random_check_imputed_plot = None
+        self.random_check_actual_plot = None
+        self.drought_index_plot = None
+        self.drought_index_scatter = None
+        self.drought_index_predicted_plot = None
+        self.drought_index_predicted_scatter = None
+        self.plot_cursor = None
+        
+        # Clear plot canvas
+        self.main_plot_canvas.axes.clear()
+        self.main_plot_canvas.draw()
+        
+        # Reset UI input fields
+        self.variable_combobox.clear()
+        self.nan_data_line.setText("0")
+        self.train_percentage.setValue(0)
+        self.valid_percentage.setValue(0)
+        self.test_percentage.setValue(0)
+        self.train_total.setText("0")
+        self.valid_total.setText("0")
+        self.test_total.setText("0")
+        self.mse_random_check.setText("0")
+        self.mae_random_check.setText("0")
+        self.sample_percentage_random_check.setValue(0)
+        self.random_check.setChecked(False)
+        self.scale_button.setChecked(False)
+        
+        # Reset LSTM settings
+        self.lstm_window_size_spinbox.setValue(0)
+        self.lstm_layers_spinbox.setValue(0)
+        self.lstm_units_spinbox.setValue(0)
+        self.lstm_dropout_spinbox.setValue(0)
+        self.lstm_epochs_spinbox.setValue(0)
+        self.lstm_batch_spinbox.setValue(0)
+        
+        # Disable buttons that require data
+        self.imputation_method.setEnabled(False)
+        self.random_check.setEnabled(False)
+        self.sample_percentage_random_check.setEnabled(False)
+        self.lstm_build_model_button.setEnabled(False)
+        self.lstm_train_model_button.setEnabled(False)
+        self.lstm_show_loss_plot_button.setEnabled(False)
+        self.forecast_button.setEnabled(False)
+        self.drought_index_combo.setEnabled(False)
+        self.show_separation.setEnabled(False)
+        
+        # Close summary window if open
+        if self.summary_win is not None:
+            self.summary_win.close()
+            self.summary_win = None

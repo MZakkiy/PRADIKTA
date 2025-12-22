@@ -62,7 +62,8 @@ def calculate_pfvi(params, WT, SM, Rf, Rf_b, Temp, R0, dt):
     x[0] = di_obs_pfvi(SM[0], 40, 70) 
 
     for i in range(time_steps):
-        x0 = np.clip(x[i], 0, 300) # Ensure PFVI is within bounds [0, 300]
+        # x0 = np.clip(x[i], 0, 300) # Ensure PFVI is within bounds [0, 300]
+        x0 = x[i] 
         
         df = df_factor(x0, Temp[i], R0) * dt
         rf = rf_factor(Rf[i], Rf_b[i])
@@ -117,7 +118,8 @@ def calculate_mkdbi(params, WT, SM, Rf, Rf_b, Temp, R0, dt):
     x[0] = di_obs_mkdbi(SM[0], 40, 70) 
 
     for i in range(time_steps):
-        x0 = np.clip(x[i], 0, 203) 
+        # x0 = np.clip(x[i], 0, 203)
+        x0 = x[i] 
         
         df = df_factor_kdbi_adj(x0, Temp[i], R0) * dt
         rf = rf_factor(Rf[i], Rf_b[i])
@@ -196,21 +198,22 @@ def fire_predict(WT, SM, Rf, Temp, R0=3000, dt=1, optim_method="Nelder-Mead", dr
                         fun=objective_function,
                         x0=initial_params,
                         args=(WT, SM, Rf, Rf_b, Temp, R0, dt),
-                        method=optim_method,
+                        method='SLSQP',
                         bounds=bnds
                     )
                     
                     if result.success and result.fun < min_error:
                         min_error = result.fun
                         best_params = result.x
-                        # print(f"New best error: {min_error:.4f} with params: {[f'{p:.3f}' for p in best_params]}")
+                        print(f"New best error: {min_error:.4f} with params: {[f'{p:.3f}' for p in best_params]}")
 
-    # print("\nOptimization complete.")
-    # print(f"Final optimized parameters (aH, bH, n, alpha): {[f'{p:.4f}' for p in best_params]}")
+    print("\nOptimization complete.")
+    print(f"Final optimized parameters (aH, bH, n, alpha): {[f'{p:.4f}' for p in best_params]}")
 
     # Calculate the final PFVI series using the best parameters found
     if drought_index == "PFVI":
         final_drought_index = calculate_pfvi(best_params, WT, SM, Rf, Rf_b, Temp, R0, dt)
+        print(final_drought_index)
         final_drought_index_clipped = np.clip(final_drought_index, 0, 300)
     else:
         final_drought_index = calculate_mkdbi(best_params, WT, SM, Rf, Rf_b, Temp, R0, dt)
