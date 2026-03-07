@@ -198,7 +198,7 @@ def fire_predict(WT, SM, Rf, Temp, R0=3000, dt=1, optim_method="Nelder-Mead", dr
                         fun=objective_function,
                         x0=initial_params,
                         args=(WT, SM, Rf, Rf_b, Temp, R0, dt),
-                        method='SLSQP',
+                        method=optim_method,
                         bounds=bnds
                     )
                     

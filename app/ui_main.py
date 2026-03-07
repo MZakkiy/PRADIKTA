@@ -413,7 +413,7 @@ class UIMainWindow(QMainWindow):
 
         self.drought_index_combo = QComboBox()
         self.drought_index_combo.setPlaceholderText("Choose Drought Index")
-        self.drought_index_combo.addItems(["KDBI", "KDBI(adj)", "mKDBI", "PFVI"])
+        self.drought_index_combo.addItems(["KBDI", "KBDI(adj)", "mKBDI", "PFVI"])
         self.drought_index_combo.currentIndexChanged.connect(self.on_drought_index_selected)
         self.drought_index_combo.setEnabled(False)
         
@@ -449,15 +449,18 @@ class UIMainWindow(QMainWindow):
         layout = QVBoxLayout()
 
         # Placeholder untuk kanvas Matplotlib
-        self.main_plot_canvas = MplCanvas(self, width=100, height=80, dpi=50)
+        self.main_plot_canvas = MplCanvas(self, width=100, height=80, dpi=120)
 
         # Tombol di bawah plot
-        # show_button = QPushButton("Show Forecast")
-        # show_button.setEnabled(False)
-        # show_button.setFixedWidth(100)
+        button_layout = QHBoxLayout()
+        self.download_image_button = QPushButton("Download Image")
+        self.download_image_button.clicked.connect(self.handle_download_image)
+        self.download_image_button.setFixedWidth(150)
+        button_layout.addWidget(self.download_image_button)
+        button_layout.addStretch()
         
         layout.addWidget(self.main_plot_canvas)
-        # layout.addWidget(show_button, alignment=Qt.AlignCenter)
+        layout.addLayout(button_layout)
         
         group_box.setLayout(layout)
         return group_box
@@ -656,7 +659,7 @@ class UIMainWindow(QMainWindow):
             # self.imputation_plot = self.main_plot_canvas.axes.scatter([], [])
             
             # Atur properti plot agar lebih informatif
-            self.main_plot_canvas.axes.set_xlabel(plot_df.index.name)
+            self.main_plot_canvas.axes.set_xlabel("Time (day)")
             self.main_plot_canvas.axes.set_ylabel(variable_col)
             self.main_plot_canvas.axes.legend()
             self.main_plot_canvas.axes.grid(True, linestyle='--', alpha=0.6)
@@ -732,10 +735,10 @@ class UIMainWindow(QMainWindow):
             sel.annotation.get_bbox_patch().set(facecolor='lightblue', alpha=0.7)
             sel.annotation.arrow_patch.set(arrowstyle="simple", facecolor="white", alpha=0.7)
 
-        # self.random_check_imputed_plot = self.main_plot_canvas.axes.scatter([], [])
-        # self.random_check_actual_plot = self.main_plot_canvas.axes.scatter([], [])
+        self.random_check_imputed_plot = self.main_plot_canvas.axes.scatter([], [])
+        self.random_check_actual_plot = self.main_plot_canvas.axes.scatter([], [])
 
-        # self.main_plot_canvas.axes.set_xlabel(self.train_data[variable_col].index.name)
+        self.main_plot_canvas.axes.set_xlabel("Time (day)")
         self.main_plot_canvas.axes.set_ylabel(variable_col)
         self.main_plot_canvas.axes.legend()
         self.main_plot_canvas.axes.grid(True, linestyle='--', alpha=0.6)
@@ -786,7 +789,7 @@ class UIMainWindow(QMainWindow):
             # self.random_check_imputed_plot = self.main_plot_canvas.axes.scatter([], [])
             # self.random_check_actual_plot = self.main_plot_canvas.axes.scatter([], [])
 
-            # self.main_plot_canvas.axes.set_xlabel(self.train_data[variable_col].index.name)
+            self.main_plot_canvas.axes.set_xlabel("Time (day)")
             self.main_plot_canvas.axes.set_ylabel(variable_col)
             self.main_plot_canvas.axes.legend()
             self.main_plot_canvas.axes.grid(True, linestyle='--', alpha=0.6)
@@ -833,7 +836,7 @@ class UIMainWindow(QMainWindow):
                 sel.annotation.get_bbox_patch().set(facecolor='lightblue', alpha=0.7)
                 sel.annotation.arrow_patch.set(arrowstyle="simple", facecolor="white", alpha=0.7)
 
-            # self.main_plot_canvas.axes.set_xlabel(self.train_data[variable_col].index.name)
+            self.main_plot_canvas.axes.set_xlabel("Time (day)")
             self.main_plot_canvas.axes.set_ylabel(variable_col)
             self.main_plot_canvas.axes.legend()
             self.main_plot_canvas.axes.grid(True, linestyle='--', alpha=0.6)
@@ -890,6 +893,7 @@ class UIMainWindow(QMainWindow):
                 sel.annotation.arrow_patch.set(arrowstyle="simple", facecolor="white", alpha=0.7)
             
 
+            self.main_plot_canvas.axes.set_xlabel("Time (day)")
             self.main_plot_canvas.axes.set_ylabel(variable_col)
             self.main_plot_canvas.axes.legend()
             self.main_plot_canvas.axes.grid(True, linestyle='--', alpha=0.6)
@@ -995,6 +999,7 @@ class UIMainWindow(QMainWindow):
             sel.annotation.get_bbox_patch().set(facecolor='lightblue', alpha=0.7)
             sel.annotation.arrow_patch.set(arrowstyle="simple", facecolor="white", alpha=0.7)
             
+        self.main_plot_canvas.axes.set_xlabel("Time (day)")
         self.main_plot_canvas.axes.set_ylabel(variable_col)
         self.main_plot_canvas.axes.legend()
         self.main_plot_canvas.axes.grid(True, linestyle='--', alpha=0.6)
@@ -1035,12 +1040,13 @@ class UIMainWindow(QMainWindow):
 
             self.main_plot_canvas.axes.set_prop_cycle(None)
 
-            self.drought_index_plot, = self.main_plot_canvas.axes.plot(self.dataframe.index, self.drought_index_values[self.dataframe.index], label='KDBI')
+            self.drought_index_plot, = self.main_plot_canvas.axes.plot(self.dataframe.index, self.drought_index_values[self.dataframe.index], label='KBDI')
             self.drought_index_scatter = self.main_plot_canvas.axes.scatter(self.dataframe.index, self.drought_index_values[self.dataframe.index])
 
             self.drought_index_predicted_plot = self.main_plot_canvas.axes.plot([], [])
 
-            self.main_plot_canvas.axes.set_ylabel("KDBI")
+            self.main_plot_canvas.axes.set_xlabel("Time (day)")
+            self.main_plot_canvas.axes.set_ylabel("KBDI")
             self.main_plot_canvas.axes.legend()
             self.main_plot_canvas.axes.set_ylim([-5, 208])
             self.main_plot_canvas.axes.grid(True, linestyle='--', alpha=0.6)
@@ -1058,12 +1064,13 @@ class UIMainWindow(QMainWindow):
 
             self.main_plot_canvas.axes.set_prop_cycle(None)
 
-            self.drought_index_plot, = self.main_plot_canvas.axes.plot(self.dataframe.index, self.drought_index_values[self.dataframe.index], label='KDBI(adj)')
+            self.drought_index_plot, = self.main_plot_canvas.axes.plot(self.dataframe.index, self.drought_index_values[self.dataframe.index], label='KBDI(adj)')
             self.drought_index_scatter = self.main_plot_canvas.axes.scatter(self.dataframe.index, self.drought_index_values[self.dataframe.index])
 
             self.drought_index_predicted_plot = self.main_plot_canvas.axes.plot([], [])
 
-            self.main_plot_canvas.axes.set_ylabel("KDBI(adj)")
+            self.main_plot_canvas.axes.set_xlabel("Time (day)")
+            self.main_plot_canvas.axes.set_ylabel("KBDI(adj)")
             self.main_plot_canvas.axes.legend()
             self.main_plot_canvas.axes.set_ylim([-5, 208])
             self.main_plot_canvas.axes.grid(True, linestyle='--', alpha=0.6)
@@ -1074,18 +1081,19 @@ class UIMainWindow(QMainWindow):
             Rf_b = np.roll(features[3], 1)
             Rf_b[0] = np.nan
 
-            self.drought_index_values, self.params = fire_predict(Temp=features[0], WT=features[1], SM=features[2], Rf=features[3], drought_index="MKDBI")
+            self.drought_index_values, self.params = fire_predict(Temp=features[0], WT=features[1], SM=features[2], Rf=features[3], drought_index="mKBDI")
         
             self.main_plot_canvas.axes.cla()
 
             self.main_plot_canvas.axes.set_prop_cycle(None)
 
-            self.drought_index_plot, = self.main_plot_canvas.axes.plot(self.dataframe.index, self.drought_index_values[self.dataframe.index], label='MKDBI')
+            self.drought_index_plot, = self.main_plot_canvas.axes.plot(self.dataframe.index, self.drought_index_values[self.dataframe.index], label='mKBDI')
             self.drought_index_scatter = self.main_plot_canvas.axes.scatter(self.dataframe.index, self.drought_index_values[self.dataframe.index])
 
             self.drought_index_predicted_plot = self.main_plot_canvas.axes.plot([], [])
 
-            self.main_plot_canvas.axes.set_ylabel("MKDBI")
+            self.main_plot_canvas.axes.set_xlabel("Time (day)")
+            self.main_plot_canvas.axes.set_ylabel("mKBDI")
             self.main_plot_canvas.axes.legend()
             self.main_plot_canvas.axes.set_ylim([-5, 208])
             self.main_plot_canvas.axes.grid(True, linestyle='--', alpha=0.6)
@@ -1104,6 +1112,7 @@ class UIMainWindow(QMainWindow):
 
             self.drought_index_predicted_plot = self.main_plot_canvas.axes.plot([], [])
 
+            self.main_plot_canvas.axes.set_xlabel("Time (day)")
             self.main_plot_canvas.axes.set_ylabel("PFVI")
             self.main_plot_canvas.axes.legend()
             self.main_plot_canvas.axes.set_ylim([-5, 305])
@@ -1126,7 +1135,7 @@ class UIMainWindow(QMainWindow):
             @self.plot_cursor.connect("add")
             def on_add(sel):
                 sel.annotation.set_text(
-                    f'Drought Index:{sel.target[1]:.2f}\nt:{sel.target[0]:.2f}\nFire Danger:{fire_danger(sel.target[1], "KDBI")}'
+                    f'Drought Index:{sel.target[1]:.2f}\nt:{sel.target[0]:.2f}\nFire Danger:{fire_danger(sel.target[1], "KBDI")}'
                 )
 
         self.main_plot_canvas.draw()
@@ -1173,20 +1182,21 @@ class UIMainWindow(QMainWindow):
 
             drought_index_values = calculate_kdbi(Temp=features[0], SM=features[2], Rf=features[3], Rf_b=Rf_b, R0=3000, dt=1)
             drought_index_values = np.clip(drought_index_values, 0, 203)
-
+            print(drought_index_values)
             self.main_plot_canvas.axes.cla()
         
             self.main_plot_canvas.axes.set_prop_cycle(None)
 
-            self.drought_index_plot, = self.main_plot_canvas.axes.plot(self.dataframe.index, self.drought_index_values[self.dataframe.index], label='KDBI')
+            self.drought_index_plot, = self.main_plot_canvas.axes.plot(self.dataframe.index, self.drought_index_values[self.dataframe.index], label='KBDI')
             self.drought_index_scatter = self.main_plot_canvas.axes.scatter(self.dataframe.index, self.drought_index_values[self.dataframe.index])
 
             last_index = self.dataframe.index[-1]
             predicted_index = [t for t in range(last_index+1, last_index+1+self.forecast_steps_spinbox.value())]
-            self.drought_index_predicted_plot, = self.main_plot_canvas.axes.plot(predicted_index, drought_index_values[predicted_index], label="KDBI Predicted")
+            self.drought_index_predicted_plot, = self.main_plot_canvas.axes.plot(predicted_index, drought_index_values[predicted_index], label="KBDI Predicted")
             self.drought_index_predicted_scatter = self.main_plot_canvas.axes.scatter(predicted_index, drought_index_values[predicted_index])
 
-            self.main_plot_canvas.axes.set_ylabel("KDBI")
+            self.main_plot_canvas.axes.set_xlabel("Time (day)")
+            self.main_plot_canvas.axes.set_ylabel("KBDI")
             self.main_plot_canvas.axes.legend()
             self.main_plot_canvas.axes.set_ylim([-5, 208])
             self.main_plot_canvas.axes.grid(True, linestyle='--', alpha=0.6)
@@ -1204,15 +1214,16 @@ class UIMainWindow(QMainWindow):
 
             self.main_plot_canvas.axes.set_prop_cycle(None)
 
-            self.drought_index_plot, = self.main_plot_canvas.axes.plot(self.dataframe.index, self.drought_index_values[self.dataframe.index], label='KDBI(adj)')
+            self.drought_index_plot, = self.main_plot_canvas.axes.plot(self.dataframe.index, self.drought_index_values[self.dataframe.index], label='KBDI(adj)')
             self.drought_index_scatter = self.main_plot_canvas.axes.scatter(self.dataframe.index, self.drought_index_values[self.dataframe.index])
 
             last_index = self.dataframe.index[-1]
             predicted_index = [t for t in range(last_index+1, last_index+1+self.forecast_steps_spinbox.value())]
-            self.drought_index_predicted_plot, = self.main_plot_canvas.axes.plot(predicted_index, drought_index_values[predicted_index], label="KDBI(adj) Predicted")
+            self.drought_index_predicted_plot, = self.main_plot_canvas.axes.plot(predicted_index, drought_index_values[predicted_index], label="KBDI(adj) Predicted")
             self.drought_index_predicted_scatter = self.main_plot_canvas.axes.scatter(predicted_index, drought_index_values[predicted_index])
 
-            self.main_plot_canvas.axes.set_ylabel("KDBI(adj)")
+            self.main_plot_canvas.axes.set_xlabel("Time (day)")
+            self.main_plot_canvas.axes.set_ylabel("KBDI(adj)")
             self.main_plot_canvas.axes.legend()
             self.main_plot_canvas.axes.set_ylim([-5, 208])
             self.main_plot_canvas.axes.grid(True, linestyle='--', alpha=0.6)
@@ -1230,15 +1241,16 @@ class UIMainWindow(QMainWindow):
 
             self.main_plot_canvas.axes.set_prop_cycle(None)
 
-            self.drought_index_plot, = self.main_plot_canvas.axes.plot(self.dataframe.index, self.drought_index_values[self.dataframe.index], label='mKDBI')
+            self.drought_index_plot, = self.main_plot_canvas.axes.plot(self.dataframe.index, self.drought_index_values[self.dataframe.index], label='mKBDI')
             self.drought_index_scatter = self.main_plot_canvas.axes.scatter(self.dataframe.index, self.drought_index_values[self.dataframe.index])
 
             last_index = self.dataframe.index[-1]
             predicted_index = [t for t in range(last_index+1, last_index+1+self.forecast_steps_spinbox.value())]
-            self.drought_index_predicted_plot, = self.main_plot_canvas.axes.plot(predicted_index, drought_index_values[predicted_index], label="mKDBI Predicted")
+            self.drought_index_predicted_plot, = self.main_plot_canvas.axes.plot(predicted_index, drought_index_values[predicted_index], label="mKBDI Predicted")
             self.drought_index_predicted_scatter = self.main_plot_canvas.axes.scatter(predicted_index, drought_index_values[predicted_index])
 
-            self.main_plot_canvas.axes.set_ylabel("mKDBI")
+            self.main_plot_canvas.axes.set_xlabel("Time (day)")
+            self.main_plot_canvas.axes.set_ylabel("mKBDI")
             self.main_plot_canvas.axes.legend()
             self.main_plot_canvas.axes.set_ylim([-5, 208])
             self.main_plot_canvas.axes.grid(True, linestyle='--', alpha=0.6)
@@ -1264,6 +1276,7 @@ class UIMainWindow(QMainWindow):
             self.drought_index_predicted_plot, = self.main_plot_canvas.axes.plot(predicted_index, drought_index_values[predicted_index], label="PFVI Predicted")
             self.drought_index_predicted_scatter = self.main_plot_canvas.axes.scatter(predicted_index, drought_index_values[predicted_index])
 
+            self.main_plot_canvas.axes.set_xlabel("Time (day)")
             self.main_plot_canvas.axes.set_ylabel("PFVI")
             self.main_plot_canvas.axes.legend()
             self.main_plot_canvas.axes.set_ylim([-5, 305])
@@ -1286,7 +1299,7 @@ class UIMainWindow(QMainWindow):
             @self.plot_cursor.connect("add")
             def on_add(sel):
                 sel.annotation.set_text(
-                    f'Drought Index:{sel.target[1]:.2f}\nt:{sel.target[0]:.2f}\nFire Danger:{fire_danger(sel.target[1], "KDBI")}'
+                    f'Drought Index:{sel.target[1]:.2f}\nt:{sel.target[0]:.2f}\nFire Danger:{fire_danger(sel.target[1], "KBDI")}'
                 )
                     
         self.main_plot_canvas.draw()
@@ -1374,3 +1387,22 @@ class UIMainWindow(QMainWindow):
         if self.summary_win is not None:
             self.summary_win.close()
             self.summary_win = None
+
+    def handle_download_image(self):
+        """Save the current plot as an image file."""
+        try:
+            # Open file dialog to choose save location
+            file_path, _ = QFileDialog.getSaveFileName(
+                self,
+                "Save Plot Image",
+                "",
+                "PNG Images (*.png);;JPEG Images (*.jpg);;PDF Documents (*.pdf);;All Files (*)"
+            )
+            
+            if file_path:
+                # Save the figure
+                self.main_plot_canvas.figure.savefig(file_path, dpi=300, bbox_inches='tight')
+                QMessageBox.information(self, "Success", f"Image saved successfully to:\n{file_path}")
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to save image: {e}")
+            print(f"Error saving image: {e}")
