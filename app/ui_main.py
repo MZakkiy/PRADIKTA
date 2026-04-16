@@ -394,16 +394,17 @@ class UIMainWindow(QMainWindow):
     def create_fire_index_tab(self):
         fire_index_tab_widget = QWidget()
         main_layout = QHBoxLayout(fire_index_tab_widget)
-        # main_layout.setContentsMargins(15, 15, 15, 15)
-        # main_layout.setSpacing(15)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setSpacing(0)
 
         # Membuat setiap kolom menggunakan fungsi pembantu
         fire_index_col = self.create_fire_index_column()
         predict_fire_index_col = self.create_predict_fire_index_column()
 
-        # Menambahkan setiap kolom ke layout utama dengan stretch factor
-        main_layout.addWidget(fire_index_col, 1, Qt.AlignmentFlag.AlignLeft)
-        main_layout.addWidget(predict_fire_index_col, 1, Qt.AlignmentFlag.AlignLeft)
+        # Menambahkan setiap kolom ke layout utama
+        main_layout.addWidget(fire_index_col)
+        main_layout.addWidget(predict_fire_index_col)
+        main_layout.addStretch()
 
         return fire_index_tab_widget
 

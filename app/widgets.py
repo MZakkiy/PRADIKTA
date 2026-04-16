@@ -5,6 +5,18 @@ from PySide6.QtWidgets import QWidget, QVBoxLayout, QTableView, QSplitter, QPush
 
 import matplotlib
 matplotlib.use('QtAgg') # Set backend Matplotlib agar kompatibel
+# Configure matplotlib for light theme
+matplotlib.rcParams['figure.facecolor'] = '#FFFFFF'
+matplotlib.rcParams['axes.facecolor'] = '#FFFFFF'
+matplotlib.rcParams['axes.edgecolor'] = '#000000'
+matplotlib.rcParams['axes.labelcolor'] = '#000000'
+matplotlib.rcParams['xtick.color'] = '#000000'
+matplotlib.rcParams['ytick.color'] = '#000000'
+matplotlib.rcParams['text.color'] = '#000000'
+matplotlib.rcParams['grid.color'] = '#E0E0E0'
+matplotlib.rcParams['legend.facecolor'] = '#FFFFFF'
+matplotlib.rcParams['legend.edgecolor'] = '#000000'
+
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 import numpy as np 
