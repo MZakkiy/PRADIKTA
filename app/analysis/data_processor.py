@@ -124,3 +124,19 @@ def feature_scaling(train_data, validation_data, test_data):
     test_data_scaled = scaler.transform(test_data)
 
     return train_data_scaled, validation_data_scaled, test_data_scaled, scaler
+
+
+def MAPE(actual, predicted):
+    """Mean Absolute Percentage Error"""
+    actual, predicted = np.array(actual), np.array(predicted)
+    return np.mean(np.abs((actual - predicted) / actual)) * 100
+
+def RMSE(actual, predicted):
+    """Root Mean Squared Error"""
+    return np.sqrt(mean_squared_error(actual, predicted))
+
+def RSE(actual, predicted):
+    """Relative Squared Error"""
+    actual = np.array(actual)
+    predicted = np.array(predicted)
+    return np.sum((actual - predicted)**2) / np.sum((actual - np.mean(actual))**2)

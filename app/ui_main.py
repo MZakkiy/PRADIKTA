@@ -19,7 +19,7 @@ import mplcursors
 
 from analysis.data_processor import (
     import_data, count_na, data_imputation, remove_random_data, 
-    MAE, MSE, data_separation, feature_scaling
+    MAE, MSE, RMSE, MAPE, RSE, data_separation, feature_scaling # <-- Tambahkan RMSE, MAPE, RSE di sini
 )
 
 from analysis.model import (
@@ -30,6 +30,17 @@ from analysis.fire_predict import (
     fire_predict, calculate_pfvi, calculate_kdbi, calculate_kdbi_adj,
     calculate_mkdbi, fire_danger
 )
+
+from tensorflow.keras.callbacks import Callback
+
+class ProgressCallback(Callback):
+    def __init__(self, progress_bar, epochs):
+        self.progress_bar = progress_bar
+        self.epochs = epochs
+
+    def on_epoch_end(self, epoch, logs=None):
+        progress = int(((epoch + 1) / self.epochs) * 100)
+        self.progress_bar.setValue(progress)
 
 class UIMainWindow(QMainWindow):
     def __init__(self):
@@ -285,7 +296,7 @@ class UIMainWindow(QMainWindow):
         self.lstm_window_size_spinbox.setMinimum(1)
         self.lstm_window_size_spinbox.setMaximum(1000)
         # self.lstm_window_size_spinbox.setRange(1, 5)
-        self.lstm_window_size_spinbox.setValue(1)
+        self.lstm_window_size_spinbox.setValue(7)
         
         self.lstm_layers_spinbox = QSpinBox()
         self.lstm_layers_spinbox.setMinimum(1)
@@ -295,7 +306,7 @@ class UIMainWindow(QMainWindow):
         self.lstm_units_spinbox = QSpinBox()
         self.lstm_units_spinbox.setMinimum(1)
         self.lstm_units_spinbox.setMaximum(1000)
-        self.lstm_units_spinbox.setValue(32)
+        self.lstm_units_spinbox.setValue(16)
 
         self.lstm_dropout_spinbox = QDoubleSpinBox()
         self.lstm_dropout_spinbox.setRange(0.0, 0.9)
@@ -372,21 +383,41 @@ class UIMainWindow(QMainWindow):
         self.lstm_mse_line = QLineEdit("N/A")
         self.lstm_mse_line.setReadOnly(True)
         
-        # self.lstm_rmse_line = QLineEdit("N/A")
-        # self.lstm_rmse_line.setReadOnly(True)
+        self.lstm_rmse_line = QLineEdit("N/A")
+        self.lstm_rmse_line.setReadOnly(True)
         
         self.lstm_mae_line = QLineEdit("N/A")
         self.lstm_mae_line.setReadOnly(True)
+
+        self.lstm_mape_line = QLineEdit("N/A")
+        self.lstm_mape_line.setReadOnly(True)
+
+        self.lstm_rse_line = QLineEdit("N/A")
+        self.lstm_rse_line.setReadOnly(True)
 
         self.lstm_show_loss_plot_button = QPushButton("Loss Plot")
         self.lstm_show_loss_plot_button.clicked.connect(self.handle_loss_function)
         self.lstm_show_loss_plot_button.setEnabled(False)
         
+        # Menyusun widget ke dalam grid (3 Baris, 4 Kolom)
+        
+        # --- Baris 0 ---
         layout.addWidget(QLabel("MSE"), 0, 0)
         layout.addWidget(self.lstm_mse_line, 0, 1)
+        layout.addWidget(QLabel("RMSE"), 0, 2)
+        layout.addWidget(self.lstm_rmse_line, 0, 3)
+        
+        # --- Baris 1 ---
         layout.addWidget(QLabel("MAE"), 1, 0)
         layout.addWidget(self.lstm_mae_line, 1, 1)
-        layout.addWidget(self.lstm_show_loss_plot_button, 2, 0, 1, 2)
+        layout.addWidget(QLabel("MAPE (%)"), 1, 2)
+        layout.addWidget(self.lstm_mape_line, 1, 3)
+        
+        # --- Baris 2 ---
+        layout.addWidget(QLabel("RSE"), 2, 0)
+        layout.addWidget(self.lstm_rse_line, 2, 1)
+        # Tombol Loss Plot mengambil sisa ruang di baris ini (rentang 1 baris, 2 kolom)
+        layout.addWidget(self.lstm_show_loss_plot_button, 2, 2, 1, 2) 
         
         group_box.setLayout(layout)
         return group_box
@@ -953,7 +984,8 @@ class UIMainWindow(QMainWindow):
                 epochs=self.lstm_epochs_spinbox.value(), 
                 batch_size=self.lstm_batch_spinbox.value(), 
                 validation_data=(self.X_val[column], self.y_val[column]),
-                verbose = 0
+                verbose = 0,
+                callbacks=[ProgressCallback(self.train_progress_bar, self.lstm_epochs_spinbox.value())]
             )
 
             self.lstm_show_loss_plot_button.setEnabled(True)
@@ -963,11 +995,18 @@ class UIMainWindow(QMainWindow):
         variable_col = self.variable_combobox.currentText()
 
         if self.scale_button.isChecked():
-            self.lstm_mae_line.setText(f"{MAE(self.scaler[variable_col].inverse_transform(self.y_test[variable_col].copy().reshape(-1, 1)), self.scaler[variable_col].inverse_transform(self.y_predict[variable_col].copy())):.2E}")
-            self.lstm_mse_line.setText(f"{MSE(self.scaler[variable_col].inverse_transform(self.y_test[variable_col].copy().reshape(-1, 1)), self.scaler[variable_col].inverse_transform(self.y_predict[variable_col].copy())):.2E}")
+            actual = self.scaler[variable_col].inverse_transform(self.y_test[variable_col].copy().reshape(-1, 1))
+            predict = self.scaler[variable_col].inverse_transform(self.y_predict[variable_col].copy())
         else:
-            self.lstm_mae_line.setText(f"{MAE(self.y_test[variable_col].copy(), self.y_predict[variable_col].copy()):.2E}")
-            self.lstm_mse_line.setText(f"{MSE(self.y_test[variable_col].copy(), self.y_predict[variable_col].copy()):.2E}")
+            actual = self.y_test[variable_col].copy()
+            predict = self.y_predict[variable_col].copy()
+
+        # Update semua text box metrik
+        self.lstm_mae_line.setText(f"{MAE(actual, predict):.2E}")
+        self.lstm_mse_line.setText(f"{MSE(actual, predict):.2E}")
+        self.lstm_rmse_line.setText(f"{RMSE(actual, predict):.2E}")
+        self.lstm_rse_line.setText(f"{RSE(actual, predict):.2E}")
+        self.lstm_mape_line.setText(f"{MAPE(actual, predict):.2f} %")
         
         self.main_plot_canvas.axes.cla()
 
@@ -1366,12 +1405,19 @@ class UIMainWindow(QMainWindow):
         self.scale_button.setChecked(False)
         
         # Reset LSTM settings
-        self.lstm_window_size_spinbox.setValue(0)
-        self.lstm_layers_spinbox.setValue(0)
-        self.lstm_units_spinbox.setValue(0)
-        self.lstm_dropout_spinbox.setValue(0)
-        self.lstm_epochs_spinbox.setValue(0)
-        self.lstm_batch_spinbox.setValue(0)
+        self.lstm_window_size_spinbox.setValue(7)
+        self.lstm_layers_spinbox.setValue(1)
+        self.lstm_units_spinbox.setValue(16)
+        self.lstm_dropout_spinbox.setValue(0.2)
+        self.lstm_epochs_spinbox.setValue(10)
+        self.lstm_batch_spinbox.setValue(32)
+        self.lstm_optimizer_combo.setCurrentIndex(0)
+        self.lstm_loss_combo.setCurrentIndex(0)
+        self.lstm_mae_line.setText("N/A")
+        self.lstm_mse_line.setText("N/A")
+        self.lstm_rmse_line.setText("N/A")
+        self.lstm_mape_line.setText("N/A")
+        self.lstm_rse_line.setText("N/A")
         
         # Disable buttons that require data
         self.imputation_method.setEnabled(False)
