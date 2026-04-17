@@ -7,6 +7,9 @@ from PySide6.QtWidgets import (
     QFileDialog, QMessageBox, QFormLayout, QDoubleSpinBox
 )
 from PySide6.QtCore import Qt
+from PySide6.QtCore import QThread, Signal
+import time
+import itertools
 
 from widgets import SummaryWindow, MplCanvas, LossFunctionWindow
 
@@ -32,6 +35,92 @@ from analysis.fire_predict import (
 )
 
 from tensorflow.keras.callbacks import Callback
+
+class LSTMGridSearchWorker(QThread):
+    progress_update = Signal(int, str)
+    # Sinyal kembali mengirim dict (parameter) dan float (rata-rata MSE)
+    search_finished = Signal(dict, float) 
+    error_occurred = Signal(str)
+
+    def __init__(self, data_dict, model_type):
+        super().__init__()
+        self.data_dict = data_dict # Format: {'Temp': (X_tr, y_tr, X_te, y_te), ...}
+        self.model_type = model_type 
+
+    def run(self):
+        try:
+            param_grid = {
+                'layers': [1, 2],                 
+                'units': [16, 32],            
+                'dropout_rate': [0.1, 0.2],       
+                'batch_size': [16, 32],
+                'epochs': [50]                    
+            }
+
+            keys = param_grid.keys()
+            values = (param_grid[key] for key in keys)
+            combinations = [dict(zip(keys, combination)) for combination in itertools.product(*values)]
+            
+            total_vars = len(self.data_dict)
+            total_combinations = len(combinations)
+            total_iterations = total_vars * total_combinations
+            
+            best_score = float('inf') # Ini sekarang akan menyimpan Rata-rata MSE
+            best_params = None
+            current_iteration = 0
+
+            # --- LOOPING UTAMA: Kombinasi Parameter ---
+            for c_idx, params in enumerate(combinations):
+                total_mse_for_this_param = 0.0
+                lstm_units_list = [params['units']] * params['layers']
+
+                # --- LOOPING KEDUA: Evaluasi di Semua Variabel ---
+                for var_name, (X_train, y_train, X_test, y_test) in self.data_dict.items():
+                    current_iteration += 1
+                    
+                    # Update Progress UI
+                    progress_percent = int((current_iteration / total_iterations) * 100)
+                    status_text = f"Combination {c_idx+1}/{total_combinations} (Evaluating: {var_name})..."
+                    self.progress_update.emit(progress_percent, status_text)
+
+                    input_shape = (X_train.shape[1], X_train.shape[2])
+
+                    model = build_lstm_model(
+                        model_type=self.model_type,
+                        input_shape=input_shape,
+                        lstm_units=lstm_units_list,
+                        dropout_rate=params['dropout_rate']
+                    )
+
+                    model.compile(optimizer='adam', loss='mse')
+
+                    model.fit(
+                        X_train, y_train,
+                        epochs=params['epochs'],
+                        batch_size=params['batch_size'],
+                        verbose=0 
+                    )
+
+                    predictions = model.predict(X_test, verbose=0)
+                    var_mse = MSE(y_test, predictions)
+                    
+                    # Jumlahkan MSE dari variabel ini
+                    total_mse_for_this_param += var_mse
+
+                # Hitung Rata-rata MSE untuk kombinasi parameter ini
+                avg_mse = total_mse_for_this_param / total_vars
+
+                # Jika rata-rata MSE ini lebih baik dari sebelumnya, simpan!
+                if avg_mse < best_score:
+                    best_score = avg_mse
+                    best_params = params
+
+            # Semua selesai
+            self.progress_update.emit(100, "Completed!")
+            self.search_finished.emit(best_params, best_score)
+
+        except Exception as e:
+            self.error_occurred.emit(str(e))
 
 class ProgressCallback(Callback):
     def __init__(self, progress_bar, epochs):
@@ -295,7 +384,6 @@ class UIMainWindow(QMainWindow):
         self.lstm_window_size_spinbox = QSpinBox()
         self.lstm_window_size_spinbox.setMinimum(1)
         self.lstm_window_size_spinbox.setMaximum(1000)
-        # self.lstm_window_size_spinbox.setRange(1, 5)
         self.lstm_window_size_spinbox.setValue(7)
         
         self.lstm_layers_spinbox = QSpinBox()
@@ -319,18 +407,33 @@ class UIMainWindow(QMainWindow):
         self.lstm_build_model_button = QPushButton("Build Model")
         self.lstm_build_model_button.clicked.connect(self.handle_build_model_lstm)
         self.lstm_build_model_button.setEnabled(False)
+
+        # --- TAMBAHAN: Tombol Grid Search ---
+        self.btn_grid_search = QPushButton("Grid Search")
+        # Opsional: Beri warna agar tombol otomatis ini menonjol dan berbeda dari tombol manual
+        self.btn_grid_search.setStyleSheet("background-color: #28a745; color: white; font-weight: bold;")
+        self.btn_grid_search.clicked.connect(self.start_grid_search) 
+        # ------------------------------------
         
+        # --- Susunan Baris 0 ---
         layout.addWidget(QLabel("Window Size"), 0, 0)
         layout.addWidget(self.lstm_window_size_spinbox, 0, 1) 
-        layout.addWidget(QLabel("Number of Hidden Layer"), 1, 0)       
-        layout.addWidget(self.lstm_layers_spinbox, 1, 1)
         layout.addWidget(QLabel("Neuron per Layer"), 0, 2)
         layout.addWidget(self.lstm_units_spinbox, 0, 3)
+
+        # --- Susunan Baris 1 ---
+        layout.addWidget(QLabel("Number of Hidden Layer"), 1, 0)       
+        layout.addWidget(self.lstm_layers_spinbox, 1, 1)
         layout.addWidget(QLabel("Dropout Rate"), 1, 2)
         layout.addWidget(self.lstm_dropout_spinbox, 1, 3)
+
+        # --- Susunan Baris 2 ---
         layout.addWidget(QLabel("Model Type"), 2, 0)
         layout.addWidget(self.lstm_type_combo, 2, 1)
-        layout.addWidget(self.lstm_build_model_button, 2, 2, 1, 2)
+        
+        # PERUBAHAN DI SINI: Membagi kolom 2 dan 3 untuk dua tombol
+        layout.addWidget(self.btn_grid_search, 2, 2)         # Tombol Grid Search di kolom 2
+        layout.addWidget(self.lstm_build_model_button, 2, 3) # Tombol Build Model di kolom 3
         
         group_box.setLayout(layout)
         return group_box
@@ -970,6 +1073,104 @@ class UIMainWindow(QMainWindow):
         QMessageBox.information(self, "Success", "Build Success.")
 
         self.lstm_train_model_button.setEnabled(True)
+
+    def start_grid_search(self):
+        if not hasattr(self, 'imputed_train_data') or not self.imputed_train_data:
+            QMessageBox.warning(self, "Warning", "Training data is not available.")
+            return
+
+        self.btn_grid_search.setEnabled(False)
+        self.lstm_build_model_button.setEnabled(False) 
+        self.train_progress_bar.setValue(0)
+
+        selected_model_type = self.lstm_type_combo.currentText()
+        window_size = self.lstm_window_size_spinbox.value()
+
+        # 1. Siapkan keranjang untuk data semua variabel
+        data_dict = {}
+        columns = list(self.imputed_train_data.keys()) # Mengambil semua nama kolom
+        
+        try:
+            # 2. Buat sliding window untuk masing-masing variabel
+            for col in columns:
+                if self.scale_button.isChecked():
+                    X_tr, y_tr, X_v, y_v, X_te, y_te = create_sliding_window(
+                        self.train_data_scaled[col].copy(), 
+                        self.validation_data_scaled[col].copy(), 
+                        self.test_data_scaled[col].copy(), 
+                        window_size
+                    )
+                else:    
+                    X_tr, y_tr, X_v, y_v, X_te, y_te = create_sliding_window(
+                        self.imputed_train_data[col].copy(), 
+                        self.imputed_validation_data[col].copy(), 
+                        self.imputed_test_data[col].copy(), 
+                        window_size
+                    )
+                # Simpan array ke dalam kamus dengan nama kolom sebagai kunci
+                data_dict[col] = (X_tr, y_tr, X_te, y_te)
+                
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"An error occurred: {e}")
+            self.btn_grid_search.setEnabled(True)
+            self.lstm_build_model_button.setEnabled(True)
+            return
+
+        # 3. Panggil Worker
+        self.grid_worker = LSTMGridSearchWorker(data_dict, selected_model_type)
+        
+        self.grid_worker.progress_update.connect(self.update_grid_progress)
+        self.grid_worker.search_finished.connect(self.apply_grid_results)
+        self.grid_worker.error_occurred.connect(self.handle_grid_error)
+        
+        self.grid_worker.start()
+
+    # --- Fungsi Penerima Sinyal dari Worker ---
+    
+    def update_grid_progress(self, percent, status_text):
+        """Memperbarui bar progres dan mengubah teks tombol sementara."""
+        # Update progress bar utama yang ada di kolom sebelahnya
+        self.train_progress_bar.setValue(percent)
+        
+        # Ubah teks tombol menjadi indikator loading
+        self.btn_grid_search.setText(f"⏳ {percent}%")
+
+    def apply_grid_results(self, best_params, best_score):
+        """Menerapkan arsitektur tunggal terbaik untuk semua variabel."""
+        self.btn_grid_search.setEnabled(True)
+        self.lstm_build_model_button.setEnabled(True)
+        self.btn_grid_search.setText("Grid Search")
+        self.train_progress_bar.setValue(100)
+        
+        # 1. Terapkan parameter langsung ke SpinBox di UI
+        self.lstm_layers_spinbox.setValue(best_params['layers'])
+        self.lstm_units_spinbox.setValue(best_params['units'])
+        self.lstm_dropout_spinbox.setValue(best_params['dropout_rate'])
+        
+        # Jika Anda punya input untuk batch size di UI, aktifkan kode ini:
+        # self.lstm_batch_spinbox.setValue(best_params['batch_size'])
+        
+        # 2. Buat Pop-Up Message
+        selected_model = self.lstm_type_combo.currentText()
+        pesan_hasil = (
+            f"{selected_model} Architecture Search Completed!\n\n"
+            f"The best combination of parameters that fits ALL variables has been found:\n\n"
+            f"Global MSE: {best_score:.4E}\n\n"
+            f"Parameters:\n"
+            f"• Hidden Layer: {best_params['layers']}\n"
+            f"• Neuron per Layer: {best_params['units']}\n"
+            f"• Dropout Rate: {best_params['dropout_rate']}\n"
+            f"• Batch Size: {best_params['batch_size']}\n\n"
+            f"These parameters have been automatically applied to the Model Architecture form."
+        )
+        QMessageBox.information(self, "Grid Search Completed", pesan_hasil)
+
+    def handle_grid_error(self, error_msg):
+        """Menangani jika terjadi error saat Grid Search."""
+        self.btn_grid_search.setEnabled(True)
+        self.lstm_build_model_button.setEnabled(True)
+        self.btn_grid_search.setText("Grid Search") # Kembalikan nama tombol
+        QMessageBox.critical(self, "Error Grid Search", f"Terjadi kesalahan: {error_msg}")
 
     def handle_train_model_lstm(self):
         self.y_predict = {}
